@@ -21,10 +21,19 @@ export async function proxy(request: NextRequest) {
     request,
   });
 
-  const supabase = createServerClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+  const supabaseAnonKey =
     process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY ||
-      process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+
+  if (!supabaseUrl || !supabaseAnonKey) {
+    // If environment variables are missing (e.g. during build or initial setup), pass through without crashing
+    return supabaseResponse;
+  }
+
+  const supabase = createServerClient(
+    supabaseUrl,
+    supabaseAnonKey,
     {
       cookies: {
         getAll() {
