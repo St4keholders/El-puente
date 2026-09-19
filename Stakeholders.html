@@ -1,0 +1,1833 @@
+<!DOCTYPE html>
+<html lang="es" style="background:#050505;color:#f5f5f0">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <style>html,body,.hero,.hero-video,video{background:#050505 !important;color:#f5f5f0;margin:0}</style>
+  <title>Nexo — Stakeholders · Un ecosistema inteligente de ventas</title>
+  <meta name="description" content="Nexo, el ecosistema inteligente de ventas de Stakeholders: sitio web, asistente virtual y métricas de negocio operando en todos tus canales. Agenda tu consulta gratuita.">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=Inter:wght@300;400;500;600&family=JetBrains+Mono:wght@300;400;500&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --bg: #050505;
+      --bg-raise: #0a0a0b;
+      --fg: #f5f5f0;
+      --dim: #6b6b66;
+      --dim-2: #44444a;
+      --line: rgba(255, 255, 255, 0.32);
+      --line-strong: rgba(255, 255, 255, 0.7);
+      --hair: rgba(255, 255, 255, 0.08);
+      --blue: #4d7fff;
+      --blue-dim: rgba(77, 127, 255, 0.14);
+      --sans: 'Inter', system-ui, sans-serif;
+      --display: 'Space Grotesk', 'Inter', system-ui, sans-serif;
+      --mono: 'JetBrains Mono', monospace;
+    }
+
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+
+    html { scroll-behavior: smooth; }
+
+    body {
+      background: var(--bg);
+      color: var(--fg);
+      font-family: var(--sans);
+      font-weight: 300;
+      overflow-x: hidden;
+      letter-spacing: 0.01em;
+      line-height: 1.5;
+    }
+
+    ::selection { background: var(--blue); color: #fff; }
+
+    /* Bloqueo duro de scroll (solo se aplica en celular,
+       mientras la intro del hero no se haya reproducido) */
+    html.locked,
+    html.locked body {
+      overflow: hidden;
+      height: 100%;
+      overscroll-behavior: none;
+      touch-action: none;
+    }
+
+    button { font-family: inherit; }
+
+    /* ============================================
+       PROGRESS BAR — se llena con el video intro
+       ============================================ */
+    .progress-bar {
+      position: fixed;
+      top: 0; left: 0;
+      width: 0%;
+      height: 2px;
+      background: var(--blue);
+      z-index: 200;
+      transition: width 0.08s linear;
+    }
+
+    /* Grain overlay */
+    .grain {
+      position: fixed;
+      inset: 0;
+      pointer-events: none;
+      z-index: 90;
+      opacity: 0.1;
+      mix-blend-mode: overlay;
+      background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='200' height='200'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2'/></filter><rect width='100%25' height='100%25' filter='url(%23n)' opacity='0.5'/></svg>");
+    }
+
+    /* ============================================
+       HEADER
+       ============================================ */
+    .site-header {
+      position: fixed;
+      top: 0; left: 0; right: 0;
+      z-index: 150;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 1.1rem 3rem;
+      transition: background 0.4s ease, border-color 0.4s ease, backdrop-filter 0.4s ease;
+      border-bottom: 1px solid transparent;
+    }
+
+    .site-header.scrolled {
+      background: rgba(5, 5, 5, 0.78);
+      backdrop-filter: blur(14px);
+      -webkit-backdrop-filter: blur(14px);
+      border-bottom-color: var(--hair);
+    }
+
+    .brand {
+      font-family: var(--mono);
+      font-size: 0.8rem;
+      font-weight: 500;
+      letter-spacing: 0.28em;
+      color: var(--fg);
+      text-decoration: none;
+    }
+
+    .nav {
+      display: flex;
+      align-items: center;
+      gap: 2.25rem;
+    }
+
+    .nav a {
+      font-family: var(--mono);
+      font-size: 0.68rem;
+      letter-spacing: 0.22em;
+      text-transform: uppercase;
+      color: var(--dim);
+      text-decoration: none;
+      transition: color 0.25s ease;
+    }
+
+    .nav a:hover, .nav a:focus-visible { color: var(--fg); }
+
+    .nav .nav-cta {
+      color: var(--fg);
+      border: 1px solid rgba(255,255,255,0.18);
+      padding: 0.55rem 1.1rem;
+      border-radius: 6px;
+      transition: border-color 0.25s ease, background 0.25s ease, color 0.25s ease;
+    }
+
+    .nav .nav-cta:hover, .nav .nav-cta:focus-visible {
+      border-color: var(--blue);
+      background: var(--blue-dim);
+    }
+
+    a:focus-visible, button:focus-visible {
+      outline: 2px solid var(--blue);
+      outline-offset: 3px;
+    }
+
+    /* ============================================
+       HERO — video con scroll-trigger (100vh)
+       ============================================ */
+    .hero {
+      position: relative;
+      width: 100%;
+      height: 100vh;
+      overflow: hidden;
+      background: #050505;
+    }
+
+    .hero-video {
+      position: absolute;
+      inset: 0;
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+      pointer-events: none;
+      background: #050505;
+      opacity: 0;
+      transform: scale(1.04);
+      transition: opacity 1.3s ease, transform 2.2s cubic-bezier(0.22, 1, 0.36, 1);
+    }
+
+    .hero-video.playing {
+      opacity: 1;
+      transform: scale(1);
+    }
+
+    .video-mask {
+      position: absolute;
+      inset: 0;
+      background:
+        linear-gradient(180deg, rgba(5,5,5,0.62) 0%, transparent 32%, transparent 62%, rgba(5,5,5,0.92) 100%);
+      pointer-events: none;
+    }
+
+    .overlay {
+      position: absolute;
+      inset: 0;
+      display: grid;
+      grid-template-rows: 1fr auto;
+      padding: 6rem 3rem 2rem;
+      z-index: 2;
+    }
+
+    .hero-center {
+      align-self: center;
+      max-width: 980px;
+    }
+
+    .eyebrow {
+      font-family: var(--mono);
+      font-size: 0.68rem;
+      text-transform: uppercase;
+      letter-spacing: 0.32em;
+      color: var(--dim);
+      margin-bottom: 1.6rem;
+      opacity: 0;
+      transform: translateY(20px);
+      animation: rise 1.2s 0.3s ease forwards;
+    }
+
+    .eyebrow b { color: var(--blue); font-weight: 400; }
+
+    .hero-title {
+      font-family: var(--display);
+      font-weight: 600;
+      font-size: clamp(2.7rem, 7vw, 4.2rem);
+      line-height: 0.98;
+      letter-spacing: -0.045em;
+      opacity: 0;
+      transform: translateY(40px);
+      animation: rise 1.4s 0.5s ease forwards;
+    }
+
+    /* En desktop, cada línea del titular es indivisible:
+       siempre se ve en 2 líneas exactas, sin importar el ancho */
+    @media (min-width: 900px) {
+      .hero-title .line { white-space: nowrap; }
+    }
+
+    .hero-title em {
+      font-style: normal;
+      color: var(--blue);
+    }
+
+    .hero-sub {
+      margin-top: 1.6rem;
+      max-width: 580px;
+      font-size: 1rem;
+      color: rgba(245,245,240,0.72);
+      line-height: 1.65;
+      opacity: 0;
+      transform: translateY(30px);
+      animation: rise 1.4s 0.75s ease forwards;
+    }
+
+    /* Bottom CTA — "Desliza para iniciar" */
+    .bottom-cta {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 1.2rem;
+      padding-bottom: 0.8rem;
+      transition: opacity 0.5s ease, transform 0.7s ease;
+    }
+
+    .bottom-cta.dismissed {
+      opacity: 0;
+      transform: translateY(20px);
+      pointer-events: none;
+    }
+
+    .cta-text {
+      font-family: var(--mono);
+      font-size: 0.75rem;
+      text-transform: uppercase;
+      letter-spacing: 0.35em;
+      color: var(--fg);
+      display: flex;
+      align-items: center;
+      gap: 1rem;
+    }
+
+    .cta-text::before,
+    .cta-text::after {
+      content: '';
+      width: 40px;
+      height: 1px;
+      background: var(--blue);
+    }
+
+    .cta-arrow {
+      width: 1px;
+      height: 50px;
+      background: linear-gradient(to bottom, transparent, var(--blue));
+      position: relative;
+      overflow: hidden;
+    }
+
+    .cta-arrow::after {
+      content: '';
+      position: absolute;
+      top: -50%; left: 0;
+      width: 100%; height: 50%;
+      background: linear-gradient(to bottom, transparent, var(--fg));
+      animation: scrollHint 1.8s ease-in-out infinite;
+    }
+
+    @keyframes scrollHint {
+      0% { transform: translateY(-100%); }
+      50% { transform: translateY(200%); }
+      100% { transform: translateY(200%); }
+    }
+
+    @keyframes rise {
+      to { opacity: 1; transform: translateY(0); }
+    }
+
+    /* ============================================
+       SECCIONES — compartido
+       ============================================ */
+    section { position: relative; }
+
+    /* ============================================
+       EFECTO NEURONAL — canvas que sigue al mouse
+       (red neuronal + mapa de calor, en blanco)
+       ============================================ */
+    .neural-canvas {
+      position: absolute;
+      inset: 0;
+      width: 100%;
+      height: 100%;
+      z-index: 1;
+      pointer-events: none;
+    }
+
+    .container {
+      max-width: 1280px;
+      margin: 0 auto;
+      padding: 0 3rem;
+      position: relative;
+      z-index: 2;
+    }
+
+    .section-eyebrow {
+      font-family: var(--mono);
+      font-size: 0.68rem;
+      text-transform: uppercase;
+      letter-spacing: 0.3em;
+      color: var(--dim);
+      margin-bottom: 1.5rem;
+    }
+
+    .section-eyebrow::before { content: '— '; color: var(--blue); }
+
+    /* Reveal-on-scroll (estilo framer-motion) */
+    .reveal {
+      opacity: 0;
+      transform: translateY(34px);
+      transition: opacity 0.9s cubic-bezier(0.22, 1, 0.36, 1), transform 0.9s cubic-bezier(0.22, 1, 0.36, 1);
+    }
+    .reveal.in { opacity: 1; transform: translateY(0); }
+    .reveal.d1 { transition-delay: 0.08s; }
+    .reveal.d2 { transition-delay: 0.18s; }
+    .reveal.d3 { transition-delay: 0.28s; }
+
+    .section-header { margin-bottom: 5rem; max-width: 780px; }
+
+    .section-title {
+      font-family: var(--display);
+      font-size: clamp(2rem, 4vw, 3.4rem);
+      font-weight: 600;
+      letter-spacing: -0.035em;
+      line-height: 1.04;
+    }
+
+    .section-title em { font-style: normal; color: var(--blue); }
+
+    .section-lead {
+      margin-top: 1.4rem;
+      font-size: 0.98rem;
+      color: var(--dim);
+      max-width: 580px;
+      line-height: 1.7;
+    }
+
+    /* ============================================
+       NEXO — emblema chip + cerebro
+       ============================================ */
+    .servicio {
+      padding: 9rem 0 8rem;
+      border-top: 1px solid #141416;
+      background:
+        radial-gradient(ellipse 60% 40% at 50% 0%, rgba(77,127,255,0.06), transparent 70%),
+        var(--bg);
+    }
+
+    .nexo-mark {
+      display: flex;
+      align-items: center;
+      gap: 1.4rem;
+      margin-bottom: 2.4rem;
+    }
+
+    .chip { width: 88px; height: 88px; flex-shrink: 0; }
+
+    .chip svg { width: 100%; height: 100%; display: block; overflow: visible; }
+
+    .chip svg path,
+    .chip svg line,
+    .chip svg rect {
+      fill: none;
+      stroke: var(--line);
+      stroke-width: 1.2;
+      stroke-linejoin: round;
+      stroke-linecap: round;
+    }
+
+    .chip svg .pin { stroke: var(--dim); }
+
+    /* El cerebro grabado en blanco, con pulso sutil */
+    .chip svg .brain path { stroke: var(--fg); }
+
+    .chip .brain {
+      animation: brainGlow 4.5s ease-in-out infinite;
+      transform-origin: center;
+    }
+
+    @keyframes brainGlow {
+      0%, 100% { opacity: 0.55; filter: none; }
+      50% { opacity: 1; filter: drop-shadow(0 0 7px rgba(77,127,255,0.55)); }
+    }
+
+    .nexo-id { display: flex; flex-direction: column; gap: 0.35rem; }
+
+    .nexo-name {
+      font-family: var(--display);
+      font-size: 1.7rem;
+      font-weight: 600;
+      letter-spacing: 0.32em;
+      line-height: 1;
+    }
+
+    .nexo-by {
+      font-family: var(--mono);
+      font-size: 0.62rem;
+      text-transform: uppercase;
+      letter-spacing: 0.26em;
+      color: var(--dim);
+    }
+
+    .nexo-by b { color: var(--blue); font-weight: 400; }
+
+    /* ============================================
+       NEXO — las 3 cards (SVG line-art)
+       ============================================ */
+    .features {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 0;
+      border-top: 1px solid var(--hair);
+    }
+
+    .card {
+      padding: 2.5rem 2.5rem 3rem;
+      border-left: 1px solid var(--hair);
+      cursor: default;
+      transition: background 0.4s ease;
+    }
+
+    .card:first-child { border-left: none; }
+    .card:is(:hover, .animate) { background: rgba(255,255,255,0.015); }
+
+    .fig-label {
+      font-family: var(--mono);
+      font-size: 0.68rem;
+      letter-spacing: 0.2em;
+      color: var(--dim-2);
+      margin-bottom: 2rem;
+      display: flex;
+      justify-content: space-between;
+    }
+
+    .fig-label span:last-child { color: var(--dim); }
+
+    .illustration {
+      width: 100%;
+      aspect-ratio: 1;
+      max-width: 260px;
+      margin: 0 auto 2.6rem;
+    }
+
+    .card-title {
+      font-family: var(--display);
+      font-size: 1.18rem;
+      font-weight: 600;
+      letter-spacing: -0.01em;
+      color: var(--fg);
+      margin-bottom: 0.75rem;
+    }
+
+    .card-text {
+      font-size: 0.9rem;
+      color: var(--dim);
+      line-height: 1.65;
+      max-width: 330px;
+    }
+
+    /* SVG line style */
+    .illustration svg { width: 100%; height: 100%; display: block; overflow: visible; }
+
+    .illustration svg path,
+    .illustration svg line,
+    .illustration svg circle,
+    .illustration svg rect,
+    .illustration svg polygon {
+      fill: none;
+      stroke: var(--line);
+      stroke-width: 1;
+      stroke-linejoin: round;
+      stroke-linecap: round;
+      transition: stroke 0.4s ease;
+    }
+
+    .card:is(:hover, .animate) .illustration svg path,
+    .card:is(:hover, .animate) .illustration svg line,
+    .card:is(:hover, .animate) .illustration svg circle,
+    .card:is(:hover, .animate) .illustration svg rect {
+      stroke: var(--line-strong);
+    }
+
+    /* El detalle clave de cada ilustración se enciende en azul */
+    .card:is(:hover, .animate) .illustration svg .key,
+    .card:is(:hover, .animate) .illustration svg .key path,
+    .card:is(:hover, .animate) .illustration svg .key line,
+    .card:is(:hover, .animate) .illustration svg .key circle,
+    .card:is(:hover, .animate) .illustration svg .key rect {
+      stroke: var(--blue);
+    }
+
+    /* CARD 1 — Tienda física: la fila de clientes se anima */
+    .persona { transition: transform 0.5s cubic-bezier(0.22, 1, 0.36, 1); }
+    .card:is(:hover, .animate) .p1 { transform: translateY(-4px); transition-delay: 0ms; }
+    .card:is(:hover, .animate) .p2 { transform: translateY(-5px); transition-delay: 60ms; }
+    .card:is(:hover, .animate) .p3 { transform: translateY(-7px); transition-delay: 120ms; }
+    .card:is(:hover, .animate) .p4 { transform: translateY(-5px); transition-delay: 180ms; }
+    .card:is(:hover, .animate) .p5 { transform: translateY(-4px); transition-delay: 240ms; }
+
+    /* CARD 2 — Vendedor: el producto pasa de mano en mano */
+    .box { transition: transform 0.65s cubic-bezier(0.22, 1, 0.36, 1); }
+    .card:is(:hover, .animate) .box { transform: translateY(-10px); }
+    .box-lines line { opacity: 0; transition: opacity 0.4s ease 0.2s; }
+    .card:is(:hover, .animate) .box-lines line { opacity: 1; }
+
+    /* CARD 3 — Hoja de cálculo: los signos saltan en cascada */
+    .sig { transition: transform 0.5s cubic-bezier(0.22, 1, 0.36, 1); }
+    .card:is(:hover, .animate) .s1 { transform: translateY(-4px); transition-delay: 0ms; }
+    .card:is(:hover, .animate) .s2 { transform: translateY(-5px); transition-delay: 60ms; }
+    .card:is(:hover, .animate) .s3 { transform: translateY(-4px); transition-delay: 120ms; }
+    .card:is(:hover, .animate) .s4 { transform: translateY(-5px); transition-delay: 180ms; }
+    .card:is(:hover, .animate) .s5 { transform: translateY(-4px); transition-delay: 240ms; }
+    .card:is(:hover, .animate) .s6 { transform: translateY(-7px); transition-delay: 300ms; }
+
+    /* ============================================
+       PROCESO
+       ============================================ */
+    .proceso {
+      padding: 8rem 0;
+      border-top: 1px solid var(--hair);
+    }
+
+    .steps {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 0;
+      border-top: 1px solid var(--hair);
+      margin-top: 4.5rem;
+    }
+
+    .step-item {
+      padding: 2.5rem 2.5rem 3rem;
+      border-left: 1px solid var(--hair);
+    }
+
+    .step-item:first-child { border-left: none; }
+
+    .step-num {
+      font-family: var(--mono);
+      font-size: 0.68rem;
+      letter-spacing: 0.26em;
+      color: var(--blue);
+      margin-bottom: 1.6rem;
+    }
+
+    .step-name {
+      font-family: var(--display);
+      font-size: 1.3rem;
+      font-weight: 600;
+      letter-spacing: -0.01em;
+    }
+
+    .step-meta {
+      font-family: var(--mono);
+      font-size: 0.66rem;
+      letter-spacing: 0.18em;
+      text-transform: uppercase;
+      color: var(--dim);
+      margin: 0.5rem 0 1.1rem;
+    }
+
+    .step-desc {
+      font-size: 0.9rem;
+      color: var(--dim);
+      line-height: 1.65;
+      max-width: 320px;
+    }
+
+    /* ============================================
+       CONSULTA — calendario → WhatsApp
+       ============================================ */
+    .demo {
+      padding: 9rem 0 8rem;
+      border-top: 1px solid var(--hair);
+      background:
+        radial-gradient(ellipse 50% 45% at 80% 30%, rgba(77,127,255,0.07), transparent 70%),
+        var(--bg);
+    }
+
+    .demo-grid {
+      display: grid;
+      grid-template-columns: 1.05fr 1fr;
+      gap: 5rem;
+      align-items: center;
+    }
+
+    .demo h2 {
+      font-family: var(--display);
+      font-size: clamp(2rem, 3.6vw, 3.2rem);
+      font-weight: 600;
+      letter-spacing: -0.035em;
+      line-height: 1.04;
+    }
+
+    .demo h2 em { font-style: normal; color: var(--blue); }
+
+    .demo-sub {
+      margin-top: 1.4rem;
+      font-size: 0.96rem;
+      color: var(--dim);
+      line-height: 1.7;
+      max-width: 480px;
+    }
+
+    .demo-actions {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 1rem;
+      margin-top: 2.2rem;
+    }
+
+    .btn {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.6rem;
+      font-family: var(--sans);
+      font-size: 0.88rem;
+      font-weight: 500;
+      letter-spacing: 0.01em;
+      text-decoration: none;
+      padding: 0.85rem 1.6rem;
+      border-radius: 8px;
+      transition: background 0.25s ease, border-color 0.25s ease, transform 0.25s ease, opacity 0.25s ease;
+      cursor: pointer;
+      border: 1px solid transparent;
+    }
+
+    .btn:active { transform: translateY(1px); }
+
+    .btn-primary {
+      background: var(--blue);
+      color: #fff;
+      border-color: var(--blue);
+    }
+
+    .btn-primary:hover { background: #3d6df0; }
+
+    .btn-ghost {
+      color: var(--fg);
+      border-color: rgba(255,255,255,0.18);
+    }
+
+    .btn-ghost:hover {
+      border-color: var(--blue);
+      background: var(--blue-dim);
+    }
+
+    .demo-note {
+      margin-top: 1.4rem;
+      font-family: var(--mono);
+      font-size: 0.66rem;
+      letter-spacing: 0.2em;
+      text-transform: uppercase;
+      color: var(--dim);
+    }
+
+    /* Calendario interactivo */
+    .calendar {
+      background: var(--bg-raise);
+      border: 1px solid var(--hair);
+      border-radius: 14px;
+      padding: 1.6rem;
+      max-width: 430px;
+      margin-left: auto;
+      width: 100%;
+    }
+
+    .cal-head {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 0.8rem;
+    }
+
+    .cal-month {
+      font-family: var(--display);
+      font-weight: 600;
+      font-size: 1rem;
+      letter-spacing: 0.01em;
+      flex: 1;
+    }
+
+    .cal-nav {
+      display: flex;
+      gap: 0.4rem;
+    }
+
+    .cal-nav button {
+      width: 28px;
+      height: 28px;
+      border-radius: 7px;
+      border: 1px solid var(--hair);
+      background: transparent;
+      color: var(--dim);
+      font-size: 0.9rem;
+      line-height: 1;
+      cursor: pointer;
+      transition: border-color 0.25s ease, color 0.25s ease;
+    }
+
+    .cal-nav button:hover:not(:disabled) { border-color: var(--blue); color: var(--fg); }
+    .cal-nav button:disabled { opacity: 0.3; cursor: not-allowed; }
+
+    .cal-tag {
+      font-family: var(--mono);
+      font-size: 0.6rem;
+      letter-spacing: 0.16em;
+      text-transform: uppercase;
+      color: var(--dim);
+      border: 1px solid var(--hair);
+      border-radius: 99px;
+      padding: 0.3rem 0.7rem;
+      white-space: nowrap;
+    }
+
+    .cal-grid {
+      display: grid;
+      grid-template-columns: repeat(7, 1fr);
+      gap: 5px;
+      margin-top: 1.2rem;
+    }
+
+    .dow {
+      font-family: var(--mono);
+      font-size: 0.58rem;
+      letter-spacing: 0.1em;
+      color: var(--dim-2);
+      text-align: center;
+      padding-bottom: 0.4rem;
+    }
+
+    .day {
+      aspect-ratio: 1;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-family: var(--mono);
+      font-size: 0.74rem;
+      color: var(--fg);
+      background: transparent;
+      border: 1px solid transparent;
+      border-radius: 8px;
+      cursor: pointer;
+      transition: border-color 0.2s ease, background 0.2s ease, color 0.2s ease;
+    }
+
+    .day:hover:not(:disabled) { border-color: rgba(255,255,255,0.2); }
+    .day:disabled { color: var(--dim-2); cursor: default; }
+    .day.empty { visibility: hidden; }
+    .day.selected { background: var(--blue); border-color: var(--blue); color: #fff; }
+
+    .cal-slots {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 8px;
+      margin-top: 1.1rem;
+    }
+
+    .slot {
+      font-family: var(--mono);
+      font-size: 0.7rem;
+      letter-spacing: 0.06em;
+      color: var(--dim);
+      background: transparent;
+      border: 1px solid var(--hair);
+      border-radius: 8px;
+      padding: 0.6rem 0;
+      cursor: pointer;
+      transition: border-color 0.2s ease, background 0.2s ease, color 0.2s ease;
+    }
+
+    .slot:hover { border-color: rgba(255,255,255,0.25); color: var(--fg); }
+    .slot.picked { background: var(--blue); border-color: var(--blue); color: #fff; }
+
+    .cal-fields {
+      display: grid;
+      gap: 8px;
+      margin-top: 1.1rem;
+    }
+
+    .cal-input {
+      width: 100%;
+      background: transparent;
+      border: 1px solid var(--hair);
+      border-radius: 8px;
+      padding: 0.72rem 0.9rem;
+      color: var(--fg);
+      font-family: var(--mono);
+      font-size: 0.72rem;
+      letter-spacing: 0.04em;
+      transition: border-color 0.2s ease;
+    }
+
+    .cal-input::placeholder { color: var(--dim-2); }
+
+    .cal-input:focus {
+      outline: none;
+      border-color: var(--blue);
+    }
+
+    .cal-pick {
+      margin-top: 1rem;
+      min-height: 1.1em;
+      font-family: var(--mono);
+      font-size: 0.64rem;
+      letter-spacing: 0.12em;
+      text-transform: uppercase;
+      color: var(--dim);
+    }
+
+    .cal-pick b { color: var(--blue); font-weight: 400; }
+
+    .cal-confirm {
+      width: 100%;
+      margin-top: 0.9rem;
+      justify-content: center;
+      font-size: 0.85rem;
+    }
+
+    .cal-confirm:disabled {
+      opacity: 0.35;
+      cursor: not-allowed;
+      background: var(--blue);
+    }
+
+    /* ============================================
+       FOOTER
+       ============================================ */
+    .site-footer {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      flex-wrap: wrap;
+      gap: 1rem;
+      padding: 2.4rem 3rem;
+      border-top: 1px solid var(--hair);
+    }
+
+    .footer-meta {
+      font-family: var(--mono);
+      font-size: 0.62rem;
+      letter-spacing: 0.18em;
+      text-transform: uppercase;
+      color: var(--dim);
+    }
+
+    /* ============================================
+       RESPONSIVE
+       ============================================ */
+    @media (max-width: 980px) {
+      .features { grid-template-columns: 1fr; }
+      .card { border-left: none; border-top: 1px solid var(--hair); }
+      .card:first-child { border-top: none; }
+      .steps { grid-template-columns: 1fr; }
+      .step-item { border-left: none; border-top: 1px solid var(--hair); }
+      .step-item:first-child { border-top: none; }
+      .demo-grid { grid-template-columns: 1fr; gap: 3.5rem; }
+      .calendar { margin-left: 0; }
+    }
+
+    @media (max-width: 700px) {
+      .container { padding: 0 1.5rem; }
+      .site-header { padding: 1rem 1.5rem; }
+      .nav { gap: 1.2rem; }
+      .nav a { font-size: 0.6rem; letter-spacing: 0.16em; }
+      .overlay { padding: 5rem 1.5rem 1.5rem; }
+      .cta-text { font-size: 0.66rem; letter-spacing: 0.25em; }
+      .cta-text::before, .cta-text::after { width: 24px; }
+      .site-footer { padding: 2rem 1.5rem; }
+      .chip { width: 70px; height: 70px; }
+      .nexo-name { font-size: 1.4rem; }
+    }
+
+    /* Reduced motion */
+    @media (prefers-reduced-motion: reduce) {
+      *, *::before, *::after {
+        animation-duration: 0.01ms !important;
+        animation-iteration-count: 1 !important;
+        transition-duration: 0.01ms !important;
+      }
+      html { scroll-behavior: auto; }
+      .reveal { opacity: 1; transform: none; }
+    }
+  </style>
+</head>
+<body>
+
+  <div class="progress-bar" id="progressBar"></div>
+  <div class="grain"></div>
+
+  <!-- ============================================
+       HEADER
+       ============================================ -->
+  <header class="site-header" id="siteHeader">
+    <a class="brand" href="#inicio">STAKEHOLDERS</a>
+    <nav class="nav">
+      <a href="#inicio">Inicio</a>
+      <a href="#nexo">Nexo</a>
+      <a class="nav-cta wa-link" href="#consulta" data-wa-msg="Hola 👋 Quiero agendar mi consulta gratuita de Nexo.">Agendar consulta</a>
+    </nav>
+  </header>
+
+  <!-- ============================================
+       INICIO — HERO con scroll-trigger de video
+       ============================================ -->
+  <section class="hero" id="inicio" data-fx>
+    <video
+      class="hero-video"
+      id="heroVideo"
+      muted
+      playsinline
+      preload="auto"
+      disablepictureinpicture
+    >
+      <source src="https://kedrau7eenlfmyk0.public.blob.vercel-storage.com/portada%20inicial.mp4" type="video/mp4">
+    </video>
+
+    <div class="video-mask"></div>
+
+    <div class="overlay">
+      <div class="hero-center">
+        <div class="eyebrow">Stakeholders presenta · <b>Nexo</b></div>
+        <h1 class="hero-title">
+          Un <em>ecosistema inteligente</em><br>de ventas para tus clientes.
+        </h1>
+        <p class="hero-sub">
+          Nexo conecta tu sitio web, tu asistente virtual y tus métricas de negocio
+          en un solo ecosistema que te permite operar en todos tus canales de venta
+          de manera omnipresente, dando un servicio de alta calidad.
+        </p>
+      </div>
+
+      <div class="bottom-cta" id="bottomCta">
+        <div class="cta-text">Desliza para iniciar</div>
+        <div class="cta-arrow"></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============================================
+       NEXO — servicio destacado
+       ============================================ -->
+  <section class="servicio" id="nexo" data-fx>
+    <div class="container">
+      <div class="section-header reveal">
+
+        <!-- Emblema: microchip con cerebro grabado en blanco -->
+        <div class="nexo-mark">
+          <div class="chip" aria-hidden="true">
+            <svg viewBox="0 0 140 140" xmlns="http://www.w3.org/2000/svg">
+              <!-- Pines -->
+              <g class="pin">
+                <line x1="50" y1="10" x2="50" y2="24"/><line x1="70" y1="10" x2="70" y2="24"/><line x1="90" y1="10" x2="90" y2="24"/>
+                <line x1="50" y1="116" x2="50" y2="130"/><line x1="70" y1="116" x2="70" y2="130"/><line x1="90" y1="116" x2="90" y2="130"/>
+                <line x1="10" y1="50" x2="24" y2="50"/><line x1="10" y1="70" x2="24" y2="70"/><line x1="10" y1="90" x2="24" y2="90"/>
+                <line x1="116" y1="50" x2="130" y2="50"/><line x1="116" y1="70" x2="130" y2="70"/><line x1="116" y1="90" x2="130" y2="90"/>
+              </g>
+              <!-- Cuerpo del chip -->
+              <rect x="24" y="24" width="92" height="92" rx="10"/>
+              <rect x="35" y="35" width="70" height="70" rx="6" opacity="0.5"/>
+              <!-- Cerebro grabado (blanco) -->
+              <g class="brain">
+                <path d="M70 46 c-8 -6 -20 -2 -22 6 c-8 1 -12 10 -7 16 c-5 5 -2 14 5 15 c0 7 9 11 15 7 c3 4 9 4 9 4 c0 0 6 0 9 -4 c6 4 15 0 15 -7 c7 -1 10 -10 5 -15 c5 -6 1 -15 -7 -16 c-2 -8 -14 -12 -22 -6 z"/>
+                <path d="M70 46 q-4 8 0 16 q4 8 0 16 q-4 8 0 16"/>
+                <path d="M52 62 q8 -4 12 2"/>
+                <path d="M50 75 q8 -2 12 4"/>
+                <path d="M56 87 q6 -4 10 0"/>
+                <path d="M88 62 q-8 -4 -12 2"/>
+                <path d="M90 75 q-8 -2 -12 4"/>
+                <path d="M84 87 q-6 -4 -10 0"/>
+              </g>
+            </svg>
+          </div>
+          <div class="nexo-id">
+            <span class="nexo-name">NEXO</span>
+            <span class="nexo-by">Servicio destacado · by <b>Stakeholders</b></span>
+          </div>
+        </div>
+
+        <h2 class="section-title">Tres componentes.<br>Un solo <em>ecosistema</em>.</h2>
+        <p class="section-lead">
+          La vitrina que vende, el asistente que responde y el panel que lo demuestra.
+          Siempre se instalan juntos — por eso Nexo es un ecosistema inteligente y no
+          servicios sueltos.
+        </p>
+      </div>
+
+      <div class="features">
+
+        <!-- COMPONENTE 1 — PUNTO DE VENTA VIRTUAL -->
+        <div class="card reveal d1">
+          <div class="fig-label"><span>FIG 01</span><span>VITRINA</span></div>
+          <div class="illustration">
+            <svg viewBox="0 0 280 280" xmlns="http://www.w3.org/2000/svg">
+              <!-- Suelo -->
+              <line x1="32" y1="246" x2="248" y2="246"/>
+              <!-- Fachada -->
+              <line x1="52" y1="100" x2="52" y2="224"/>
+              <line x1="228" y1="100" x2="228" y2="224"/>
+              <line x1="52" y1="224" x2="228" y2="224"/>
+              <!-- Toldo -->
+              <path d="M44 96 L58 64 L222 64 L236 96"/>
+              <path d="M44 96 a12 8 0 0 0 24 0 a12 8 0 0 0 24 0 a12 8 0 0 0 24 0 a12 8 0 0 0 24 0 a12 8 0 0 0 24 0 a12 8 0 0 0 24 0 a12 8 0 0 0 24 0 a12 8 0 0 0 24 0"/>
+              <line x1="92" y1="64" x2="92" y2="96"/>
+              <line x1="140" y1="64" x2="140" y2="96"/>
+              <line x1="188" y1="64" x2="188" y2="96"/>
+              <!-- Letrero (abierto 365 días) -->
+              <g class="key">
+                <rect x="112" y="112" width="56" height="20" rx="4"/>
+                <line x1="122" y1="122" x2="158" y2="122"/>
+              </g>
+              <!-- Puerta -->
+              <path d="M114 224 L114 160 q0 -8 8 -8 h36 q8 0 8 8 L166 224"/>
+              <!-- Vitrinas laterales -->
+              <rect x="64" y="150" width="38" height="44" rx="3"/>
+              <line x1="69" y1="166" x2="97" y2="166"/>
+              <line x1="69" y1="180" x2="97" y2="180"/>
+              <rect x="178" y="150" width="38" height="44" rx="3"/>
+              <line x1="183" y1="166" x2="211" y2="166"/>
+              <line x1="183" y1="180" x2="211" y2="180"/>
+              <!-- Personas (la tienda llena) -->
+              <g class="persona p1">
+                <circle cx="84" cy="212" r="8"/>
+                <path d="M71 246 q0 -22 13 -22 q13 0 13 22"/>
+              </g>
+              <g class="persona p2">
+                <circle cx="116" cy="208" r="8"/>
+                <path d="M103 246 q0 -24 13 -24 q13 0 13 24"/>
+              </g>
+              <g class="persona p3 key">
+                <circle cx="140" cy="204" r="9"/>
+                <path d="M125 246 q0 -28 15 -28 q15 0 15 28"/>
+              </g>
+              <g class="persona p4">
+                <circle cx="164" cy="208" r="8"/>
+                <path d="M151 246 q0 -24 13 -24 q13 0 13 24"/>
+              </g>
+              <g class="persona p5">
+                <circle cx="196" cy="212" r="8"/>
+                <path d="M183 246 q0 -22 13 -22 q13 0 13 22"/>
+              </g>
+            </svg>
+          </div>
+          <h3 class="card-title">Punto de Venta Virtual</h3>
+          <p class="card-text">
+            Tu vitrina digital diseñada para una sola cosa: que el visitante compre tu
+            servicio de manera directa. No es una página de presencia — es una página
+            de venta, abierta los 365 días.
+          </p>
+        </div>
+
+        <!-- COMPONENTE 2 — ASISTENTE VIRTUAL -->
+        <div class="card reveal d2">
+          <div class="fig-label"><span>FIG 02</span><span>AGENTE IA</span></div>
+          <div class="illustration">
+            <svg viewBox="0 0 280 280" xmlns="http://www.w3.org/2000/svg">
+              <!-- Suelo -->
+              <line x1="40" y1="212" x2="240" y2="212"/>
+              <!-- Vendedor (uniformado, izquierda) -->
+              <circle cx="86" cy="94" r="17"/>
+              <path d="M68 90 a18 16 0 0 1 36 0"/>
+              <line x1="64" y1="90" x2="112" y2="90"/>
+              <path d="M52 212 q0 -54 34 -54 q34 0 34 54"/>
+              <line x1="74" y1="168" x2="74" y2="208"/>
+              <line x1="98" y1="168" x2="98" y2="208"/>
+              <circle cx="79" cy="184" r="3"/>
+              <path d="M112 176 Q126 164 130 150"/>
+              <!-- Producto entregado (centro, se eleva al hover) -->
+              <g class="box key">
+                <path d="M140 118 L118 129 L140 140 L162 129 Z"/>
+                <path d="M118 129 L118 147 L140 158 L140 140 Z"/>
+                <path d="M162 129 L162 147 L140 158 L140 140 Z"/>
+              </g>
+              <g class="box-lines key">
+                <line x1="127" y1="106" x2="122" y2="98"/>
+                <line x1="140" y1="103" x2="140" y2="94"/>
+                <line x1="153" y1="106" x2="158" y2="98"/>
+              </g>
+              <!-- Cliente (derecha) -->
+              <circle cx="194" cy="94" r="17"/>
+              <path d="M228 212 q0 -54 -34 -54 q-34 0 -34 54"/>
+              <path d="M168 176 Q154 164 150 150"/>
+            </svg>
+          </div>
+          <h3 class="card-title">Asistente Virtual</h3>
+          <p class="card-text">
+            Un agente de IA que responde en segundos en tu web, WhatsApp e Instagram.
+            Resuelve dudas, toma pedidos y agenda citas con el tono de tu marca —
+            y separa curiosos de compradores antes de pasarte el contacto.
+          </p>
+        </div>
+
+        <!-- COMPONENTE 3 — PANEL DE MÉTRICAS -->
+        <div class="card reveal d3">
+          <div class="fig-label"><span>FIG 03</span><span>RESULTADOS</span></div>
+          <div class="illustration">
+            <svg viewBox="0 0 280 280" xmlns="http://www.w3.org/2000/svg">
+              <!-- Pestaña -->
+              <path d="M70 64 V52 q0 -6 6 -6 h28 q6 0 6 6 V64"/>
+              <!-- Hoja de cálculo -->
+              <rect x="54" y="64" width="172" height="152" rx="8"/>
+              <line x1="54" y1="100" x2="226" y2="100"/>
+              <line x1="111" y1="64" x2="111" y2="216"/>
+              <line x1="168" y1="64" x2="168" y2="216"/>
+              <line x1="54" y1="139" x2="226" y2="139"/>
+              <line x1="54" y1="178" x2="226" y2="178"/>
+              <!-- Encabezados -->
+              <line x1="66" y1="83" x2="98" y2="83"/>
+              <line x1="123" y1="83" x2="155" y2="83"/>
+              <line x1="180" y1="83" x2="214" y2="83"/>
+              <!-- Signos -->
+              <g class="sig s1">
+                <line x1="82" y1="107" x2="82" y2="132"/>
+                <path d="M90 113 c-3 -4 -13 -4 -13 2 c0 7 13 5 13 12 c0 6 -10 6 -13 2"/>
+              </g>
+              <g class="sig s2">
+                <circle cx="132" cy="113" r="5"/>
+                <circle cx="147" cy="127" r="5"/>
+                <line x1="129" y1="131" x2="150" y2="108"/>
+              </g>
+              <g class="sig s3">
+                <line x1="197" y1="109" x2="197" y2="131"/>
+                <line x1="186" y1="120" x2="208" y2="120"/>
+              </g>
+              <g class="sig s4">
+                <line x1="73" y1="153" x2="92" y2="153"/>
+                <line x1="73" y1="163" x2="92" y2="163"/>
+              </g>
+              <g class="sig s5">
+                <line x1="131" y1="150" x2="148" y2="167"/>
+                <line x1="148" y1="150" x2="131" y2="167"/>
+              </g>
+              <!-- Tendencia al alza (clave) -->
+              <g class="sig s6 key">
+                <path d="M180 207 L194 192 L202 199 L214 184"/>
+                <path d="M214 184 L205 185 M214 184 L212 193"/>
+              </g>
+            </svg>
+          </div>
+          <h3 class="card-title">Panel de Métricas</h3>
+          <p class="card-text">
+            Una sola pantalla donde ves cómo el sistema se ha desempeñado, semana
+            a semana. Perfecto para dar seguimiento.
+          </p>
+        </div>
+
+      </div>
+    </div>
+  </section>
+
+  <!-- ============================================
+       PROCESO
+       ============================================ -->
+  <section class="proceso" id="proceso" data-fx>
+    <div class="container">
+      <div class="section-header reveal" style="margin-bottom:0;">
+        <div class="section-eyebrow">Cómo se instala</div>
+        <h2 class="section-title">De cero a un <em>ecosistema inteligente</em>,<br>en tres pasos.</h2>
+      </div>
+
+      <div class="steps">
+        <div class="step-item reveal d1">
+          <div class="step-num">PASO 01</div>
+          <div class="step-name">Diagnóstico</div>
+          <div class="step-meta">30 min · Gratis</div>
+          <p class="step-desc">
+            Analizamos tu flujo de ventas actual: cuántos mensajes recibes, cuántos respondes
+            a tiempo y cuánto te está costando la diferencia.
+          </p>
+        </div>
+        <div class="step-item reveal d2">
+          <div class="step-num">PASO 02</div>
+          <div class="step-name">Instalación</div>
+          <div class="step-meta">7 días</div>
+          <p class="step-desc">
+            Construimos tu punto de venta virtual, entrenamos al asistente con tu catálogo
+            y tu tono, y conectamos tus canales. Todo listo en una semana.
+          </p>
+        </div>
+        <div class="step-item reveal d3">
+          <div class="step-num">PASO 03</div>
+          <div class="step-name">Operación</div>
+          <div class="step-meta">Mensual</div>
+          <p class="step-desc">
+            El ecosistema atiende y vende. Tú revisas el panel, recibes los contactos
+            listos para cerrar y nosotros optimizamos cada semana.
+          </p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============================================
+       CONSULTA GRATUITA — calendario → WhatsApp
+       ============================================ -->
+  <section class="demo" id="consulta" data-fx>
+    <div class="container">
+      <div class="demo-grid">
+        <div class="reveal">
+          <div class="section-eyebrow">Consulta gratuita</div>
+          <h2>Velo funcionando<br>antes de <em>decidir</em>.</h2>
+          <p class="demo-sub">
+            Elige un día y una hora en el calendario. En 30 minutos te mostramos Nexo
+            operando con un caso real de tu industria y calculamos cuántas conversaciones
+            estás dejando ir hoy. Sin pitch — el ecosistema se demuestra solo.
+          </p>
+          <div class="demo-actions">
+            <a class="btn btn-primary wa-link" href="#" data-wa-msg="Hola 👋 Quiero agendar mi consulta gratuita de Nexo.">Agendar por WhatsApp</a>
+            <a class="btn btn-ghost wa-link" href="#" data-wa-msg="Hola 👋 Quiero hablar con el asistente IA de Nexo.">Hablar con el asistente IA</a>
+          </div>
+          <div class="demo-note">Sin costo · Sin compromiso · 30 minutos</div>
+        </div>
+
+        <div class="reveal d2">
+          <div class="calendar">
+            <div class="cal-head">
+              <div class="cal-month" id="calMonth">—</div>
+              <div class="cal-nav">
+                <button type="button" id="calPrev" aria-label="Mes anterior">‹</button>
+                <button type="button" id="calNext" aria-label="Mes siguiente">›</button>
+              </div>
+              <div class="cal-tag">Consulta · 30 min</div>
+            </div>
+            <div class="cal-grid" id="calGrid" role="group" aria-label="Selecciona un día"></div>
+            <div class="cal-slots" id="calSlots" role="group" aria-label="Selecciona una hora">
+              <button type="button" class="slot" data-slot="9:00 a.m.">9:00</button>
+              <button type="button" class="slot" data-slot="11:30 a.m.">11:30</button>
+              <button type="button" class="slot" data-slot="3:00 p.m.">15:00</button>
+              <button type="button" class="slot" data-slot="4:30 p.m.">16:30</button>
+            </div>
+            <div class="cal-fields">
+              <input type="tel" id="calPhone" class="cal-input" placeholder="Tu número de contacto" autocomplete="tel" inputmode="tel" aria-label="Número de contacto">
+              <input type="email" id="calEmail" class="cal-input" placeholder="Tu email" autocomplete="email" aria-label="Email">
+            </div>
+            <div class="cal-pick" id="calPick">Elige un día y una hora</div>
+            <button type="button" class="btn btn-primary cal-confirm" id="calConfirm" disabled>
+              Confirmar por WhatsApp →
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============================================
+       FOOTER
+       ============================================ -->
+  <footer class="site-footer">
+    <span class="brand">STAKEHOLDERS</span>
+    <span class="footer-meta">Nexo · Ecosistema Inteligente de Venta · Medellín, Colombia · © 2026</span>
+  </footer>
+
+  <script>
+    // ============================================
+    // WHATSAPP — todos los CTAs llevan al WhatsApp
+    // ============================================
+    const WA_NUMBER = '573181797287';
+    const waUrl = (msg) => `https://wa.me/${WA_NUMBER}?text=${encodeURIComponent(msg)}`;
+
+    document.querySelectorAll('.wa-link').forEach(a => {
+      const msg = a.dataset.waMsg || 'Hola 👋 Quiero más información sobre Nexo.';
+      a.href = waUrl(msg);
+      a.target = '_blank';
+      a.rel = 'noopener';
+    });
+
+    // ============================================
+    // HERO — SCROLL-TRIGGERED PLAYBACK + AUTO-SCROLL
+    //
+    //  1. Primer swipe → el video se reproduce. Scroll BLOQUEADO.
+    //  2. Al segundo 2.5 del video → smooth-scroll automático
+    //     hacia la siguiente sección (~1s).
+    //  3. Al terminar el smooth-scroll → scroll libre.
+    // ============================================
+    const video = document.getElementById('heroVideo');
+    const cta = document.getElementById('bottomCta');
+    const progressBar = document.getElementById('progressBar');
+    const header = document.getElementById('siteHeader');
+
+    const SCROLL_TRIGGER_TIME = 2.5;
+    const SMOOTH_SCROLL_DURATION = 1000;
+
+    const reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+    let triggered = false;
+    let autoScrollStarted = false;
+    let scrollUnlocked = reducedMotion; // con reduced-motion no bloqueamos nada
+    let videoReady = false;
+
+    // SOLO CELULAR: además del preventDefault, bloqueamos el scroll
+    // de forma dura (overflow + touch-action) para que un swipe fuerte
+    // con inercia no se lleve la página antes de que corra el video.
+    // En computador no se aplica — ahí todo queda como está.
+    const hardLockMobile = !reducedMotion && window.matchMedia('(hover: none)').matches;
+
+    function setScrollLock(on) {
+      document.documentElement.classList.toggle('locked', on && hardLockMobile);
+    }
+
+    function unlockScroll() {
+      scrollUnlocked = true;
+      setScrollLock(false);
+    }
+
+    setScrollLock(true);
+
+    video.addEventListener('loadeddata', () => {
+      videoReady = true;
+      if (!triggered) {
+        video.pause();
+        video.currentTime = 0;
+      }
+    });
+
+    video.addEventListener('timeupdate', () => {
+      if (video.duration && !isNaN(video.duration)) {
+        progressBar.style.width = `${(video.currentTime / video.duration) * 100}%`;
+      }
+      if (!autoScrollStarted && !reducedMotion && video.currentTime >= SCROLL_TRIGGER_TIME) {
+        autoScrollStarted = true;
+        startAutoScroll();
+      }
+    });
+
+    video.addEventListener('ended', () => {
+      progressBar.style.width = '100%';
+    });
+
+    function easeInOutCubic(t) {
+      return t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2;
+    }
+
+    function startAutoScroll() {
+      setScrollLock(false);    // soltamos el bloqueo duro para poder animar
+      window.scrollTo(0, 0);   // partimos siempre desde el hero
+      const startY = window.scrollY;
+      const targetY = window.innerHeight;
+      const distance = targetY - startY;
+      const startTime = performance.now();
+
+      function step(now) {
+        const elapsed = now - startTime;
+        const t = Math.min(elapsed / SMOOTH_SCROLL_DURATION, 1);
+        window.scrollTo(0, startY + distance * easeInOutCubic(t));
+        if (t < 1) {
+          requestAnimationFrame(step);
+        } else {
+          unlockScroll();
+        }
+      }
+      requestAnimationFrame(step);
+    }
+
+    // Red de seguridad: pase lo que pase con el video,
+    // el usuario nunca queda atrapado sin poder deslizar.
+    function forceProceed() {
+      if (autoScrollStarted) {
+        unlockScroll();
+        return;
+      }
+      autoScrollStarted = true;
+      startAutoScroll();
+      // Garantía extra por si el auto-scroll se interrumpe
+      setTimeout(unlockScroll, SMOOTH_SCROLL_DURATION + 600);
+    }
+
+    // Si el video falla en cargar, no bloqueamos nada
+    video.addEventListener('error', unlockScroll);
+    const videoSource = video.querySelector('source');
+    if (videoSource) {
+      videoSource.addEventListener('error', unlockScroll);
+    }
+
+    function trigger() {
+      if (triggered) return;
+      triggered = true;
+      cta.classList.add('dismissed');
+      video.classList.add('playing'); // el video aparece con fade sobre el fondo negro
+      const playPromise = video.play();
+      if (playPromise && typeof playPromise.catch === 'function') {
+        playPromise.catch(err => {
+          console.warn('Video play blocked:', err);
+          forceProceed(); // el navegador bloqueó el video → seguimos sin él
+        });
+      }
+      // Si en 3.5s el video no ha avanzado lo suficiente para disparar
+      // el auto-scroll (carga lenta, stall, etc.), seguimos igual.
+      setTimeout(forceProceed, 3500);
+    }
+
+    function isLocked() { return !scrollUnlocked; }
+
+    function onWheel(e) {
+      if (isLocked()) {
+        e.preventDefault();
+        if (!triggered && e.deltaY > 0) trigger();
+      }
+    }
+
+    let touchStartY = 0;
+    function onTouchStart(e) { touchStartY = e.touches[0].clientY; }
+
+    function onTouchMove(e) {
+      // Mientras está bloqueado solo evitamos el scroll;
+      // el video se dispara al soltar el dedo (touchend),
+      // porque los navegadores móviles solo permiten
+      // reproducir video desde ese tipo de gesto.
+      if (isLocked()) e.preventDefault();
+    }
+
+    function onTouchEnd() {
+      if (isLocked() && !triggered) trigger();
+    }
+
+    function onKeyDown(e) {
+      const downKeys = ['ArrowDown', 'PageDown', ' ', 'Spacebar'];
+      if (isLocked() && downKeys.includes(e.key)) {
+        e.preventDefault();
+        if (!triggered) trigger();
+      }
+    }
+
+    // El tap sobre "Desliza para iniciar" también dispara la intro
+    cta.addEventListener('click', trigger);
+
+    window.addEventListener('wheel', onWheel, { passive: false });
+    window.addEventListener('touchstart', onTouchStart, { passive: true });
+    window.addEventListener('touchmove', onTouchMove, { passive: false });
+    window.addEventListener('touchend', onTouchEnd, { passive: true });
+    window.addEventListener('keydown', onKeyDown);
+
+    setTimeout(() => {
+      if (!videoReady && video.readyState >= 1) videoReady = true;
+    }, 1000);
+
+    // Si el usuario hace clic en un link del nav mientras está bloqueado,
+    // liberamos el scroll para no atraparlo en el hero.
+    document.querySelectorAll('.nav a, .brand').forEach(a => {
+      a.addEventListener('click', unlockScroll);
+    });
+
+    // ============================================
+    // HEADER — fondo al hacer scroll
+    // ============================================
+    function onScroll() {
+      header.classList.toggle('scrolled', window.scrollY > 40);
+    }
+    window.addEventListener('scroll', onScroll, { passive: true });
+    onScroll();
+
+    // ============================================
+    // REVEAL ON SCROLL (estilo framer-motion)
+    // ============================================
+    const revealEls = document.querySelectorAll('.reveal');
+    if ('IntersectionObserver' in window && !reducedMotion) {
+      const io = new IntersectionObserver((entries) => {
+        entries.forEach(entry => {
+          if (entry.isIntersecting) {
+            entry.target.classList.add('in');
+            io.unobserve(entry.target);
+          }
+        });
+      }, { threshold: 0.18, rootMargin: '0px 0px -8% 0px' });
+      revealEls.forEach(el => io.observe(el));
+    } else {
+      revealEls.forEach(el => el.classList.add('in'));
+    }
+
+    // ============================================
+    // CALENDARIO INTERACTIVO → WHATSAPP
+    // El usuario elige día + hora y el botón abre
+    // WhatsApp con la cita prellenada.
+    // ============================================
+    const MESES = ['enero','febrero','marzo','abril','mayo','junio','julio','agosto','septiembre','octubre','noviembre','diciembre'];
+    const DIAS = ['domingo','lunes','martes','miércoles','jueves','viernes','sábado'];
+    const DOW = ['L','M','X','J','V','S','D'];
+    const MAX_MONTHS_AHEAD = 2; // hasta 2 meses hacia adelante
+
+    const calMonthEl = document.getElementById('calMonth');
+    const calGridEl = document.getElementById('calGrid');
+    const calPrevBtn = document.getElementById('calPrev');
+    const calNextBtn = document.getElementById('calNext');
+    const calPickEl = document.getElementById('calPick');
+    const calConfirmBtn = document.getElementById('calConfirm');
+    const slotBtns = document.querySelectorAll('.slot');
+
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+
+    let viewYear = today.getFullYear();
+    let viewMonth = today.getMonth();
+    let selectedDate = null; // objeto Date
+    let selectedSlot = null; // string "9:00 a.m."
+
+    function monthOffset(y, m) {
+      return (y - today.getFullYear()) * 12 + (m - today.getMonth());
+    }
+
+    function renderCalendar() {
+      calMonthEl.textContent = `${MESES[viewMonth][0].toUpperCase()}${MESES[viewMonth].slice(1)} ${viewYear}`;
+      calGridEl.innerHTML = '';
+
+      DOW.forEach(d => {
+        const el = document.createElement('div');
+        el.className = 'dow';
+        el.textContent = d;
+        calGridEl.appendChild(el);
+      });
+
+      const firstDay = new Date(viewYear, viewMonth, 1);
+      const daysInMonth = new Date(viewYear, viewMonth + 1, 0).getDate();
+      const offset = (firstDay.getDay() + 6) % 7; // lunes = primera columna
+
+      for (let i = 0; i < offset; i++) {
+        const el = document.createElement('button');
+        el.className = 'day empty';
+        el.disabled = true;
+        el.tabIndex = -1;
+        calGridEl.appendChild(el);
+      }
+
+      for (let d = 1; d <= daysInMonth; d++) {
+        const date = new Date(viewYear, viewMonth, d);
+        const el = document.createElement('button');
+        el.type = 'button';
+        el.className = 'day';
+        el.textContent = d;
+
+        const isPast = date <= today; // se agenda a partir de mañana
+        const isWeekend = date.getDay() === 0 || date.getDay() === 6;
+
+        if (isPast || isWeekend) {
+          el.disabled = true;
+        } else {
+          el.addEventListener('click', () => {
+            selectedDate = date;
+            renderCalendar();
+            updatePick();
+          });
+        }
+
+        if (selectedDate &&
+            selectedDate.getFullYear() === viewYear &&
+            selectedDate.getMonth() === viewMonth &&
+            selectedDate.getDate() === d) {
+          el.classList.add('selected');
+        }
+
+        calGridEl.appendChild(el);
+      }
+
+      calPrevBtn.disabled = monthOffset(viewYear, viewMonth) <= 0;
+      calNextBtn.disabled = monthOffset(viewYear, viewMonth) >= MAX_MONTHS_AHEAD;
+    }
+
+    calPrevBtn.addEventListener('click', () => {
+      if (calPrevBtn.disabled) return;
+      viewMonth--;
+      if (viewMonth < 0) { viewMonth = 11; viewYear--; }
+      renderCalendar();
+    });
+
+    calNextBtn.addEventListener('click', () => {
+      if (calNextBtn.disabled) return;
+      viewMonth++;
+      if (viewMonth > 11) { viewMonth = 0; viewYear++; }
+      renderCalendar();
+    });
+
+    slotBtns.forEach(btn => {
+      btn.addEventListener('click', () => {
+        slotBtns.forEach(b => b.classList.remove('picked'));
+        btn.classList.add('picked');
+        selectedSlot = btn.dataset.slot;
+        updatePick();
+      });
+    });
+
+    const phoneInput = document.getElementById('calPhone');
+    const emailInput = document.getElementById('calEmail');
+
+    function validPhone(v) { return v.replace(/\D/g, '').length >= 7; }
+    function validEmail(v) { return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(v.trim()); }
+
+    phoneInput.addEventListener('input', updatePick);
+    emailInput.addEventListener('input', updatePick);
+
+    function updatePick() {
+      const hasContact = validPhone(phoneInput.value) && validEmail(emailInput.value);
+      const ready = selectedDate && selectedSlot && hasContact;
+      calConfirmBtn.disabled = !ready;
+
+      if (!selectedDate && !selectedSlot) {
+        calPickEl.textContent = 'Elige un día y una hora';
+      } else if (selectedDate && !selectedSlot) {
+        calPickEl.innerHTML = `<b>${formatDate(selectedDate)}</b> · falta la hora`;
+      } else if (!selectedDate && selectedSlot) {
+        calPickEl.innerHTML = `<b>${selectedSlot}</b> · falta el día`;
+      } else if (!hasContact) {
+        calPickEl.innerHTML = `<b>${formatDate(selectedDate)} · ${selectedSlot}</b> · faltan tus datos de contacto`;
+      } else {
+        calPickEl.innerHTML = `<b>${formatDate(selectedDate)} · ${selectedSlot}</b> · todo listo ✓`;
+      }
+    }
+
+    function formatDate(date) {
+      return `${DIAS[date.getDay()]} ${date.getDate()} de ${MESES[date.getMonth()]}`;
+    }
+
+    calConfirmBtn.addEventListener('click', () => {
+      if (calConfirmBtn.disabled) return;
+      const msg = `Hola 👋 Quiero agendar mi consulta gratuita de Nexo para el ${formatDate(selectedDate)} a las ${selectedSlot}.\n\nMis datos de contacto:\n📞 ${phoneInput.value.trim()}\n✉️ ${emailInput.value.trim()}`;
+      window.open(waUrl(msg), '_blank', 'noopener');
+    });
+
+    renderCalendar();
+    updatePick();
+
+    // ============================================
+    // EFECTO NEURONAL + MAPA DE CALOR (blanco)
+    // Cada sección [data-fx] tiene un canvas con
+    // nodos que derivan lentamente; cerca del mouse
+    // las conexiones se encienden y un halo blanco
+    // tipo heatmap sigue al cursor.
+    // ============================================
+    if (!reducedMotion) {
+      const fxSections = document.querySelectorAll('[data-fx]');
+      const pointer = { x: -99999, y: -99999, active: false };
+      let lastPointerMove = 0;
+
+      // En dispositivos táctiles el efecto NUNCA sigue al dedo:
+      // se mueve solo, de forma automática, para no interferir
+      // con el scroll ni con la navegación.
+      const touchDevice = window.matchMedia('(hover: none)').matches;
+
+      if (!touchDevice) {
+        window.addEventListener('pointermove', e => {
+          pointer.x = e.clientX;
+          pointer.y = e.clientY;
+          pointer.active = true;
+          lastPointerMove = performance.now();
+        }, { passive: true });
+
+        window.addEventListener('pointerleave', () => { pointer.active = false; });
+      }
+
+      const LINK_DIST = 110;     // distancia máxima entre nodos conectados
+      const MOUSE_RADIUS = 240;  // radio de influencia del cursor
+
+      const systems = [];
+
+      fxSections.forEach(sec => {
+        const canvas = document.createElement('canvas');
+        canvas.className = 'neural-canvas';
+        canvas.setAttribute('aria-hidden', 'true');
+        sec.prepend(canvas);
+
+        const sys = {
+          sec, canvas,
+          ctx: canvas.getContext('2d'),
+          nodes: [], w: 0, h: 0,
+          visible: false,
+          phase: Math.random() * Math.PI * 2
+        };
+
+        function resize() {
+          const r = sec.getBoundingClientRect();
+          const dpr = Math.min(window.devicePixelRatio || 1, 2);
+          sys.w = r.width;
+          sys.h = r.height;
+          canvas.width = Math.max(1, Math.round(r.width * dpr));
+          canvas.height = Math.max(1, Math.round(r.height * dpr));
+          sys.ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+
+          const count = Math.max(26, Math.min(85, Math.round((r.width * r.height) / 17000)));
+          sys.nodes = Array.from({ length: count }, () => ({
+            x: Math.random() * sys.w,
+            y: Math.random() * sys.h,
+            vx: (Math.random() - 0.5) * 0.24,
+            vy: (Math.random() - 0.5) * 0.24,
+            r: 1 + Math.random() * 1.3
+          }));
+        }
+
+        resize();
+        window.addEventListener('resize', resize);
+        // Re-medimos cuando carga todo (las alturas pueden cambiar)
+        window.addEventListener('load', resize);
+
+        systems.push(sys);
+      });
+
+      const fxObserver = new IntersectionObserver(entries => {
+        entries.forEach(e => {
+          const s = systems.find(s => s.sec === e.target);
+          if (s) s.visible = e.isIntersecting;
+        });
+      }, { threshold: 0 });
+
+      systems.forEach(s => fxObserver.observe(s.sec));
+
+      function drawSystem(sys, now) {
+        const { ctx, w, h, nodes, sec } = sys;
+        const rect = sec.getBoundingClientRect();
+        let mx = pointer.x - rect.left;
+        let my = pointer.y - rect.top;
+        let inside = pointer.active &&
+          mx >= -MOUSE_RADIUS && mx <= w + MOUSE_RADIUS &&
+          my >= -MOUSE_RADIUS && my <= h + MOUSE_RADIUS;
+
+        // En táctil: siempre cursor virtual automático.
+        // En desktop: sigue al mouse; si está quieto 2.5s, modo ambiente.
+        const usePointer = !touchDevice && inside && (now - lastPointerMove) < 2500;
+        if (!usePointer) {
+          mx = w * (0.5 + 0.36 * Math.sin(now * 0.00042 + sys.phase));
+          my = h * (0.5 + 0.36 * Math.sin(now * 0.00031 + sys.phase * 1.7));
+          inside = true;
+        }
+
+        ctx.clearRect(0, 0, w, h);
+
+        // Halo tipo mapa de calor (blanco, capas concéntricas)
+        if (inside) {
+          const halo = ctx.createRadialGradient(mx, my, 0, mx, my, MOUSE_RADIUS * 1.35);
+          halo.addColorStop(0, 'rgba(255,255,255,0.085)');
+          halo.addColorStop(0.35, 'rgba(255,255,255,0.035)');
+          halo.addColorStop(0.7, 'rgba(255,255,255,0.012)');
+          halo.addColorStop(1, 'rgba(255,255,255,0)');
+          ctx.fillStyle = halo;
+          ctx.fillRect(mx - MOUSE_RADIUS * 1.35, my - MOUSE_RADIUS * 1.35, MOUSE_RADIUS * 2.7, MOUSE_RADIUS * 2.7);
+        }
+
+        // Deriva de los nodos
+        for (const n of nodes) {
+          n.x += n.vx;
+          n.y += n.vy;
+          if (n.x < 0 || n.x > w) n.vx *= -1;
+          if (n.y < 0 || n.y > h) n.vy *= -1;
+        }
+
+        // Conexiones + nodos (intensidad según cercanía al cursor)
+        for (let i = 0; i < nodes.length; i++) {
+          const a = nodes[i];
+          const da = inside ? Math.hypot(a.x - mx, a.y - my) : Infinity;
+          const heatA = Math.max(0, 1 - da / MOUSE_RADIUS);
+
+          for (let j = i + 1; j < nodes.length; j++) {
+            const b = nodes[j];
+            const dx = a.x - b.x;
+            const dy = a.y - b.y;
+            const d2 = dx * dx + dy * dy;
+            if (d2 < LINK_DIST * LINK_DIST) {
+              const db = inside ? Math.hypot(b.x - mx, b.y - my) : Infinity;
+              const heat = Math.max(heatA, Math.max(0, 1 - db / MOUSE_RADIUS));
+              const fade = 1 - Math.sqrt(d2) / LINK_DIST;
+              const o = (0.022 + heat * 0.34) * fade;
+              if (o > 0.006) {
+                ctx.strokeStyle = `rgba(255,255,255,${o})`;
+                ctx.lineWidth = 1;
+                ctx.beginPath();
+                ctx.moveTo(a.x, a.y);
+                ctx.lineTo(b.x, b.y);
+                ctx.stroke();
+              }
+            }
+          }
+
+          // Nodo (se enciende cerca del cursor)
+          ctx.fillStyle = `rgba(255,255,255,${0.09 + heatA * 0.72})`;
+          ctx.beginPath();
+          ctx.arc(a.x, a.y, a.r + heatA * 1.6, 0, Math.PI * 2);
+          ctx.fill();
+        }
+      }
+
+      function fxFrame(now) {
+        systems.forEach(sys => { if (sys.visible) drawSystem(sys, now); });
+        requestAnimationFrame(fxFrame);
+      }
+      requestAnimationFrame(fxFrame);
+    }
+
+    // ============================================
+    // MÓVIL / TÁCTIL — las animaciones de hover de
+    // las cards se disparan al entrar en pantalla
+    // ============================================
+    if (window.matchMedia('(hover: none)').matches && 'IntersectionObserver' in window) {
+      const cardObserver = new IntersectionObserver(entries => {
+        entries.forEach(e => e.target.classList.toggle('animate', e.isIntersecting));
+      }, { threshold: 0.55 });
+      document.querySelectorAll('.card').forEach(c => cardObserver.observe(c));
+    }
+  </script>
+</body>
+</html>
