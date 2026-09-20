@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useState, useRef, useEffect } from "react";
+import { useRouter } from "next/navigation";
 import { Glass } from "@/components/ui/Glass";
 import {
   IconoCheckCirculo,
@@ -71,6 +72,7 @@ export function MisDatosClient({
   const [phoneCountry, setPhoneCountry] = useState(parsedCountry);
   const [phoneRaw, setPhoneRaw] = useState(parsedNumber);
 
+  const router = useRouter();
   const [saving, setSaving] = useState(false);
   const [saveNotice, setSaveNotice] = useState(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
@@ -167,6 +169,7 @@ export function MisDatosClient({
       }
 
       setSaveNotice(true);
+      router.refresh();
       setTimeout(() => setSaveNotice(false), 4000);
     } catch (err: any) {
       console.error("Error saving profile:", err);

@@ -19,6 +19,7 @@ import { Glass } from "@/components/ui/Glass";
 import { CauseCard, CauseCardProps } from "@/components/feed/CauseCard";
 import { createClient } from "@/lib/supabase/client";
 import { getCountryName } from "@/lib/geo/countries";
+import { toggleFollowAction } from "@/app/actions/social";
 
 
 interface UserProfileViewProps {
@@ -78,19 +79,18 @@ export function UserProfileView({
     setFollowersCount((prev) => prev + (nextState ? 1 : -1));
 
     try {
-      if (nextState) {
-        await supabase
-          .from("follows")
-          .insert({ follower_id: currentUserId, following_id: profile.id });
-      } else {
-        await supabase
-          .from("follows")
-          .delete()
-          .eq("follower_id", currentUserId)
-          .eq("following_id", profile.id);
+      const res = await toggleFollowAction(profile.id);
+      if (!res.success) {
+        // Revert on error
+        setFollowing(!nextState);
+        setFollowersCount((prev) => prev + (nextState ? -1 : 1));
+      } else if (res.isFollowing !== undefined) {
+        setFollowing(res.isFollowing);
       }
     } catch (err) {
       console.error("Error updating follow:", err);
+      setFollowing(!nextState);
+      setFollowersCount((prev) => prev + (nextState ? -1 : 1));
     }
   };
 

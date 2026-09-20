@@ -7,6 +7,8 @@ import { IconoComentar, IconoEnviar, IconoBasura, IconoEditar, IconoRespuesta, I
 import { Glass } from "@/components/ui/Glass";
 import { formatDistanceToNow } from "@/lib/utils/date";
 import { createClient } from "@/lib/supabase/client";
+import { createCommentAction, deleteCommentAction } from "@/app/actions/comments";
+import type { Database } from "@/lib/database.types";
 
 export interface CommentAuthor {
   id: string;
@@ -174,38 +176,19 @@ export function CommentsSection({
 
     setIsSubmitting(true);
     try {
-      const { data: created, error } = await supabase
-        .from("comments")
-        .insert({
-          cause_id: causeId,
-          author_id: currentUser.id,
-          body: trimmed,
-          parent_id: replyTo ? replyTo.id : null,
-          thread,
-        })
-        .select(
-          `
-          id,
-          cause_id,
-          parent_id,
-          body,
-          created_at,
-          edited_at,
-          author_id,
-          replies_count,
-          author:profiles!comments_author_id_fkey(
-            id,
-            full_name,
-            username,
-            avatar_url
-          )
-        `
-        )
-        .single();
+      const res = await createCommentAction({
+        causeId,
+        body: trimmed,
+        parentId: replyTo ? replyTo.id : null,
+        thread,
+      });
 
-      if (error) throw error;
+      if (!res.success || !res.comment) {
+        alert(res.error || "No pudimos publicar el comentario.");
+        return;
+      }
 
-      const item = created as any as CommentItem;
+      const item = res.comment as any as CommentItem;
 
       if (replyTo) {
         // Find which root comment this belongs to
@@ -227,7 +210,7 @@ export function CommentsSection({
       setNewCommentBody("");
       setReplyTo(null);
     } catch (err: any) {
-      alert("Error al publicar comentario: " + err.message);
+      alert("Error al publicar comentario: " + (err?.message || ""));
     } finally {
       setIsSubmitting(false);
     }
@@ -238,26 +221,34 @@ export function CommentsSection({
     if (!confirm("¿Seguro que deseas eliminar este comentario?")) return;
 
     const isRoot = !comment.parent_id;
-    await supabase.from("comments").delete().eq("id", comment.id);
+    try {
+      const res = await deleteCommentAction(comment.id, causeId);
+      if (!res.success) {
+        alert(res.error || "No pudimos eliminar el comentario.");
+        return;
+      }
 
-    if (isRoot) {
-      setComments((prev) => prev.filter((c) => c.id !== comment.id));
-      setRepliesMap((prev) => {
-        const copy = { ...prev };
-        delete copy[comment.id];
-        return copy;
-      });
-    } else {
-      const rootId = comment.parent_id!;
-      setRepliesMap((prev) => ({
-        ...prev,
-        [rootId]: (prev[rootId] || []).filter((r) => r.id !== comment.id),
-      }));
-      setComments((prev) =>
-        prev.map((c) =>
-          c.id === rootId ? { ...c, replies_count: Math.max(0, c.replies_count - 1) } : c
-        )
-      );
+      if (isRoot) {
+        setComments((prev) => prev.filter((c) => c.id !== comment.id));
+        setRepliesMap((prev) => {
+          const copy = { ...prev };
+          delete copy[comment.id];
+          return copy;
+        });
+      } else {
+        const rootId = comment.parent_id!;
+        setRepliesMap((prev) => ({
+          ...prev,
+          [rootId]: (prev[rootId] || []).filter((c) => c.id !== comment.id),
+        }));
+        setComments((prev) =>
+          prev.map((c) =>
+            c.id === rootId ? { ...c, replies_count: Math.max(0, c.replies_count - 1) } : c
+          )
+        );
+      }
+    } catch (err: any) {
+      alert("Error al eliminar: " + (err?.message || ""));
     }
   };
 

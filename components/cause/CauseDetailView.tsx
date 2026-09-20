@@ -25,6 +25,7 @@ import {
   IconoTarjeta,
   IconoCorazon as IconoSeguir,
 } from "@/components/iconos";
+import { toggleFollowAction } from "@/app/actions/social";
 import { Glass } from "@/components/ui/Glass";
 import { MarcoImagen } from "@/components/media/MarcoImagen";
 import { formatDistanceToNow } from "@/lib/utils/date";
@@ -222,10 +223,11 @@ export function CauseDetailView({
     const next = !isFollowing;
     setIsFollowing(next);
     try {
-      if (next) {
-        await supabase.from("follows").insert({ follower_id: currentUserId, following_id: cause.author_id });
-      } else {
-        await supabase.from("follows").delete().eq("follower_id", currentUserId).eq("following_id", cause.author_id);
+      const res = await toggleFollowAction(cause.author_id);
+      if (!res.success) {
+        setIsFollowing(!next); // revert on error
+      } else if (res.isFollowing !== undefined) {
+        setIsFollowing(res.isFollowing);
       }
     } catch {
       setIsFollowing(!next); // revert on error

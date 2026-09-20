@@ -1,6 +1,7 @@
 "use server";
 
 import { createClient } from "@/lib/supabase/server";
+import { revalidatePath } from "next/cache";
 
 export interface UpdateProfileInput {
   fullName: string;
@@ -28,11 +29,17 @@ export async function updateProfileAction(data: UpdateProfileInput) {
       return { success: false, error: "El nombre completo debe tener al menos 2 caracteres." };
     }
 
+    // Sanitize country code (must match ^[A-Z]{2}$ or null)
+    let cleanCountry: string | null = null;
+    if (data.countryCode && /^[a-zA-Z]{2}$/.test(data.countryCode.trim())) {
+      cleanCountry = data.countryCode.trim().toUpperCase();
+    }
+
     // 1. Actualizar profiles
     const profileUpdate: Record<string, any> = {
       full_name: cleanName,
       bio: data.bio ? data.bio.trim() : null,
-      country_code: data.countryCode || null,
+      country_code: cleanCountry,
       city: data.city ? data.city.trim() : null,
       updated_at: new Date().toISOString(),
     };
@@ -41,24 +48,31 @@ export async function updateProfileAction(data: UpdateProfileInput) {
       profileUpdate.avatar_url = data.avatarUrl;
     }
 
-    const { error: profErr } = await supabase
+    const { data: updatedProfile, error: profErr } = await supabase
       .from("profiles")
       .update(profileUpdate)
-      .eq("id", user.id);
+      .eq("id", user.id)
+      .select("username")
+      .single();
 
     if (profErr) {
       console.error("Error updating profile:", profErr);
-      return { success: false, error: "No pudimos guardar tu perfil." };
+      return { success: false, error: profErr.message || "No pudimos guardar tu perfil." };
     }
 
-    // 2. Actualizar o crear profile_private (on conflict do update / nothing)
+    // 2. Actualizar o crear profile_private si se proporcionó teléfono
     if (data.phone !== undefined) {
+      let cleanPhone: string | null = null;
+      if (data.phone && /^\+[1-9][0-9]{7,14}$/.test(data.phone.trim())) {
+        cleanPhone = data.phone.trim();
+      }
+
       const { error: privErr } = await supabase
         .from("profile_private")
         .upsert(
           {
             id: user.id,
-            phone: data.phone ? data.phone.trim() : null,
+            phone: cleanPhone,
             updated_at: new Date().toISOString(),
           },
           { onConflict: "id" }
@@ -69,6 +83,13 @@ export async function updateProfileAction(data: UpdateProfileInput) {
         return { success: false, error: "No pudimos guardar tu teléfono." };
       }
     }
+
+    revalidatePath("/perfil");
+    revalidatePath("/perfil/cuenta");
+    if (updatedProfile?.username) {
+      revalidatePath(`/u/${updatedProfile.username}`);
+    }
+    revalidatePath("/");
 
     return { success: true };
   } catch (err: any) {

@@ -15,6 +15,7 @@ import {
 } from "@/components/iconos";
 import { formatDistanceToNow } from "@/lib/utils/date";
 import { getCountryName } from "@/lib/geo/countries";
+import { toggleFollowAction } from "@/app/actions/social";
 import { MarcoImagen } from "@/components/media/MarcoImagen";
 
 export interface CauseMediaItem {
@@ -182,10 +183,23 @@ export function CauseCard({
     onSaveToggle?.(id, saved);
   };
 
-  const handleFollow = () => {
+  const handleFollow = async () => {
     const next = !following;
     setFollowing(next);
-    onFollowToggle?.(author.id, following);
+    if (onFollowToggle) {
+      onFollowToggle(author.id, following);
+    } else {
+      const res = await toggleFollowAction(author.id);
+      if (!res.success) {
+        if (res.error === "SIN_SESION") {
+          window.location.href = `/entrar?next=/causa/${id}`;
+        } else {
+          setFollowing(!next);
+        }
+      } else if (res.isFollowing !== undefined) {
+        setFollowing(res.isFollowing);
+      }
+    }
   };
 
   const resolvedCountry = country_name || getCountryName(country_code);

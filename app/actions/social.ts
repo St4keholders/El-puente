@@ -1,0 +1,64 @@
+"use server";
+
+import { createClient } from "@/lib/supabase/server";
+import { revalidatePath } from "next/cache";
+
+export async function toggleFollowAction(
+  targetUserId: string
+): Promise<{ success: boolean; isFollowing?: boolean; error?: string }> {
+  if (!targetUserId) {
+    return { success: false, error: "Usuario inválido" };
+  }
+
+  try {
+    const supabase = await createClient();
+    const {
+      data: { user },
+      error: authErr,
+    } = await supabase.auth.getUser();
+
+    if (authErr || !user) {
+      return { success: false, error: "SIN_SESION" };
+    }
+
+    if (user.id === targetUserId) {
+      return { success: false, error: "No puedes seguirte a ti mismo" };
+    }
+
+    // Check existing follow
+    const { data: existing } = await supabase
+      .from("follows")
+      .select("id")
+      .eq("follower_id", user.id)
+      .eq("following_id", targetUserId)
+      .maybeSingle();
+
+    if (existing) {
+      // Unfollow
+      const { error: delErr } = await supabase
+        .from("follows")
+        .delete()
+        .eq("follower_id", user.id)
+        .eq("following_id", targetUserId);
+
+      if (delErr) throw delErr;
+      revalidatePath("/explorar");
+      revalidatePath(`/u/${targetUserId}`);
+      return { success: true, isFollowing: false };
+    } else {
+      // Follow
+      const { error: insErr } = await supabase.from("follows").insert({
+        follower_id: user.id,
+        following_id: targetUserId,
+      });
+
+      if (insErr) throw insErr;
+      revalidatePath("/explorar");
+      revalidatePath(`/u/${targetUserId}`);
+      return { success: true, isFollowing: true };
+    }
+  } catch (err: any) {
+    console.error("Error in toggleFollowAction:", err);
+    return { success: false, error: err?.message || "Error al actualizar seguimiento" };
+  }
+}

@@ -123,7 +123,7 @@ export default async function UserProfilePage(props: UserProfilePageProps) {
   const countryObj = countries.find((c) => c.id === profile.country_code);
 
   return (
-    <main className="min-h-screen pt-4 pb-24">
+    <main className="min-h-screen pt-24 md:pt-28 pb-24">
       <UserProfileView
         profile={profile}
         countryName={countryObj?.n}

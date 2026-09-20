@@ -32,6 +32,7 @@ import { getUserStorageUsage, MAX_USER_STORAGE_BYTES } from "@/lib/media";
 import { defaultGeocoder, GeocodedCity } from "@/lib/geo/geocoder";
 import mundoData from "@/lib/geo/mundo.json";
 import { CauseCard } from "@/components/feed/CauseCard";
+import { initDraftAction } from "./actions";
 import type { Database } from "@/lib/database.types";
 import { parsePhoneNumberFromString, type CountryCode } from "libphonenumber-js";
 
@@ -218,60 +219,28 @@ function NuevaCausaContent() {
       return;
     }
 
-    const timeout = setTimeout(() => {
-      setInitError("La carga tardó demasiado tiempo. Por favor reintenta.");
-      setInitializing(false);
-    }, 10000);
-
     async function initDraft() {
       try {
         setInitializing(true);
+        setInitError(null);
         const draftParam = searchParams.get("draftId") || searchParams.get("id");
-        let draft: any = null;
 
-        if (draftParam) {
-          const { data: specifiedCause } = await supabase
-            .from("causes")
-            .select("*")
-            .eq("id", draftParam)
-            .eq("author_id", user!.id)
-            .maybeSingle();
-          if (specifiedCause) {
-            draft = specifiedCause;
-          }
+        const res = await initDraftAction({
+          draftParam,
+          defaultCountry: countryCode,
+        });
+
+        if (res.redirect) {
+          router.push(res.redirect);
+          return;
         }
 
-        if (!draft) {
-          // Look for existing draft
-          const { data: existingDrafts } = await supabase
-            .from("causes")
-            .select("*")
-            .eq("author_id", user!.id)
-            .eq("status", "borrador")
-            .order("updated_at", { ascending: false })
-            .limit(1);
-
-          draft = existingDrafts && existingDrafts[0];
+        if (!res.success || !res.draft) {
+          setInitError(res.error || "No pudimos inicializar el borrador.");
+          return;
         }
 
-        if (!draft) {
-          // Create new draft
-          const { data: newDraft, error: createError } = await supabase
-            .from("causes")
-            .insert({
-              author_id: user!.id,
-              status: "borrador",
-              country_code: countryCode || "CO",
-              category: "otra",
-              currency: "USD",
-            })
-            .select()
-            .single();
-
-          if (createError) throw createError;
-          draft = newDraft;
-        }
-
+        const draft = res.draft;
         setCauseId(draft.id);
         setTitle(draft.title || "");
         setCategory(draft.category || "otra");
@@ -290,15 +259,9 @@ function NuevaCausaContent() {
         setSuppliesInstructions(draft.supplies_instructions || "");
 
         // Load existing supplies for this draft
-        const { data: suppliesData } = await supabase
-          .from("cause_supplies")
-          .select("*")
-          .eq("cause_id", draft.id)
-          .order("position", { ascending: true });
-
-        if (suppliesData && suppliesData.length > 0) {
+        if (res.supplies && res.supplies.length > 0) {
           setSuppliesList(
-            suppliesData.map((s) => ({
+            res.supplies.map((s: any) => ({
               id: s.id,
               name: s.name,
               unit: s.unit || "",
@@ -310,15 +273,9 @@ function NuevaCausaContent() {
         }
 
         // Load existing media for this draft
-        const { data: mediaItems } = await supabase
-          .from("cause_media")
-          .select("*")
-          .eq("cause_id", draft.id)
-          .order("position", { ascending: true });
-
-        if (mediaItems && mediaItems.length > 0) {
+        if (res.media && res.media.length > 0) {
           setMediaList(
-            mediaItems.map((m) => ({
+            res.media.map((m: any) => ({
               id: m.id,
               storage_path: m.storage_path,
               kind: m.kind,
@@ -331,15 +288,9 @@ function NuevaCausaContent() {
         }
 
         // Load existing donation methods for this draft
-        const { data: methods } = await supabase
-          .from("donation_methods")
-          .select("*")
-          .eq("cause_id", draft.id)
-          .order("position", { ascending: true });
-
-        if (methods && methods.length > 0) {
+        if (res.methods && res.methods.length > 0) {
           setDonationMethods(
-            methods.map((m) => ({
+            res.methods.map((m: any) => ({
               id: m.id,
               kind: m.kind,
               provider: m.provider,
@@ -347,58 +298,34 @@ function NuevaCausaContent() {
               account_value: m.account_value,
               details: m.details || "",
               position: m.position,
-              profile_method_id: (m as any).profile_method_id || null,
+              profile_method_id: m.profile_method_id || null,
             }))
           );
         }
 
         // Load saved profile donation methods (Sección 6)
-        const { data: pMethods } = await supabase
-          .from("profile_donation_methods")
-          .select("*")
-          .eq("owner_id", user!.id)
-          .order("position", { ascending: true });
-
-        if (pMethods && pMethods.length > 0) {
-          setProfileMethods(pMethods as ProfileDonationMethod[]);
+        if (res.profileMethods && res.profileMethods.length > 0) {
+          setProfileMethods(res.profileMethods as ProfileDonationMethod[]);
         }
 
-        // Also check for previous causes to copy methods from as fallback
-        const { data: prevMethods } = await supabase
-          .from("donation_methods")
-          .select("*")
-          .eq("owner_id", user!.id)
-          .neq("cause_id", draft.id)
-          .limit(5);
-
-        if (prevMethods && prevMethods.length > 0) {
+        // Previous methods available
+        if (res.prevMethods && res.prevMethods.length > 0) {
           setPreviousMethodsAvailable(
-            prevMethods.map((m) => ({
+            res.prevMethods.map((m: any) => ({
               kind: m.kind,
               provider: m.provider,
               account_holder: m.account_holder,
               account_value: m.account_value,
               details: m.details || "",
               position: m.position,
-              profile_method_id: (m as any).profile_method_id || null,
+              profile_method_id: m.profile_method_id || null,
             }))
           );
         }
       } catch (err: any) {
         console.error("Error initializing draft:", err);
-        // If Supabase rejected the insert because the user isn't onboarded, redirect
-        const msg: string = err?.message || err?.code || "";
-        if (
-          msg.includes("is_onboarded") ||
-          msg.includes("bienvenida") ||
-          msg.includes("onboard")
-        ) {
-          router.push("/bienvenida?next=/causa/nueva");
-          return;
-        }
-        setInitError(err?.message || "No se pudo inicializar el borrador. Verifica tu conexión.");
+        setInitError(err?.message || "No se pudo inicializar el borrador.");
       } finally {
-        clearTimeout(timeout);
         setInitializing(false);
       }
     }

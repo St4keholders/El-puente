@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useState } from "react";
+import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { Glass } from "@/components/ui/Glass";
 import {
@@ -13,6 +14,12 @@ import {
   IconoOjo,
   IconoOjoTachado,
 } from "@/components/iconos";
+import {
+  createPaymentMethodAction,
+  updatePaymentMethodAction,
+  deletePaymentMethodAction,
+  reorderPaymentMethodsAction,
+} from "./actions";
 import type { Database } from "@/lib/database.types";
 
 type ProfileDonationMethod = Database["public"]["Tables"]["profile_donation_methods"]["Row"];
@@ -39,8 +46,10 @@ export function MetodosPagoClient({
 }: MetodosPagoClientProps) {
   const supabase = createClient();
 
+  const router = useRouter();
   const [methods, setMethods] = useState<ProfileDonationMethod[]>(initialMethods);
   const [errorMsg, setErrorMsg] = useState<string | null>(initialError);
+
   const [visibleValues, setVisibleValues] = useState<Record<string, boolean>>({});
 
   // Modal de Crear / Editar
@@ -117,32 +126,29 @@ export function MetodosPagoClient({
     const [moved] = newMethods.splice(index, 1);
     newMethods.splice(targetIndex, 0, moved);
 
-    // Actualizar posiciones localmente
     setMethods(newMethods);
 
-    // Persistir orden en BD
-    await Promise.all(
-      newMethods.map((m, idx) =>
-        supabase
-          .from("profile_donation_methods")
-          .update({ position: idx })
-          .eq("id", m.id)
-      )
-    );
+    try {
+      await reorderPaymentMethodsAction(newMethods.map((m) => m.id));
+      router.refresh();
+    } catch (e) {
+      console.warn("Error reordering:", e);
+    }
   };
 
   const handleDelete = async (id: string) => {
-    const { error } = await supabase
-      .from("profile_donation_methods")
-      .delete()
-      .eq("id", id);
-
-    if (!error) {
-      setMethods((prev) => prev.filter((m) => m.id !== id));
-      setDeletingId(null);
-      setSuccessNotice("Método eliminado con éxito.");
-      setTimeout(() => setSuccessNotice(null), 3000);
-    } else {
+    try {
+      const res = await deletePaymentMethodAction(id);
+      if (res.success) {
+        setMethods((prev) => prev.filter((m) => m.id !== id));
+        setDeletingId(null);
+        setSuccessNotice("Método eliminado con éxito.");
+        router.refresh();
+        setTimeout(() => setSuccessNotice(null), 3000);
+      } else {
+        setErrorMsg(res.error || "No pudimos eliminar el método.");
+      }
+    } catch {
       setErrorMsg("No pudimos eliminar el método.");
     }
   };
@@ -169,23 +175,17 @@ export function MetodosPagoClient({
     try {
       if (editingMethod) {
         // Actualizar método existente
-        const { error: updateError } = await supabase
-          .from("profile_donation_methods")
-          .update({
-            kind,
-            provider: provider.trim(),
-            account_holder: accountHolder.trim(),
-            account_value: accountValue.trim(),
-            details: details.trim() || null,
-          })
-          .eq("id", editingMethod.id);
+        const res = await updatePaymentMethodAction(editingMethod.id, {
+          kind,
+          provider: provider.trim(),
+          account_holder: accountHolder.trim(),
+          account_value: accountValue.trim(),
+          details: details.trim() || null,
+          syncActiveCauses,
+        });
 
-        if (updateError) throw updateError;
-
-        if (syncActiveCauses) {
-          await supabase.rpc("sync_profile_method", {
-            p_method_id: editingMethod.id,
-          });
+        if (!res.success) {
+          throw new Error(res.error || "Error al actualizar método.");
         }
 
         setMethods((prev) =>
@@ -207,35 +207,31 @@ export function MetodosPagoClient({
       } else {
         // Crear nuevo método
         const nextPos = methods.length;
-        const { data: inserted, error: insertError } = await supabase
-          .from("profile_donation_methods")
-          .insert({
-            owner_id: userId,
-            kind,
-            provider: provider.trim(),
-            account_holder: accountHolder.trim(),
-            account_value: accountValue.trim(),
-            details: details.trim() || null,
-            position: nextPos,
-          })
-          .select("*")
-          .single();
+        const res = await createPaymentMethodAction({
+          kind,
+          provider: provider.trim(),
+          account_holder: accountHolder.trim(),
+          account_value: accountValue.trim(),
+          details: details.trim() || null,
+          position: nextPos,
+        });
 
-        if (insertError) {
-          if (insertError.message.includes("LIMITE_METODOS")) {
+        if (!res.success) {
+          if (res.error?.includes("10")) {
             setModalError("Llegaste al máximo de 10 métodos permitidos.");
             setSaving(false);
             return;
           }
-          throw insertError;
+          throw new Error(res.error || "Error al crear método.");
         }
 
-        if (inserted) {
-          setMethods((prev) => [...prev, inserted]);
+        if (res.method) {
+          setMethods((prev) => [...prev, res.method]);
         }
         setSuccessNotice("Método agregado con éxito.");
       }
 
+      router.refresh();
       setIsModalOpen(false);
       setTimeout(() => setSuccessNotice(null), 3000);
     } catch (err: any) {

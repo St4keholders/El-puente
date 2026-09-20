@@ -4,7 +4,7 @@ import React, { useEffect, useState, useCallback } from "react";
 import Link from "next/link";
 import { IconoCerrar, IconoCorazon, IconoFlechaDerecha } from "@/components/iconos";
 import { Glass } from "@/components/ui/Glass";
-import { createClient } from "@/lib/supabase/client";
+import { getCountryCausesAction } from "@/app/actions/planet";
 import type { Database } from "@/lib/database.types";
 
 type Cause = Database["public"]["Tables"]["causes"]["Row"] & {
@@ -37,32 +37,15 @@ export function CountryPanel({
     setLoading(true);
     setLoadError(null);
 
-    const supabase = createClient();
-
     try {
-      const { data, count, error } = await supabase
-        .from("causes")
-        .select(
-          `
-          *,
-          author:profiles!causes_author_id_fkey(*),
-          cause_media(*)
-        `,
-          { count: "exact" }
-        )
-        .eq("status", "activa")
-        .eq("country_code", countryCode)
-        .order("published_at", { ascending: false })
-        .limit(4);
-
-      if (error) {
-        console.error("Error fetching country causes:", error);
+      const res = await getCountryCausesAction(countryCode);
+      if (!res.success) {
         setLoadError("No pudimos cargar las causas de este país.");
         setCauses([]);
         setTotalCount(0);
       } else {
-        setCauses(data as any || []);
-        setTotalCount(count ?? (data?.length || 0));
+        setCauses(res.causes as any);
+        setTotalCount(res.count);
         setLoadError(null);
       }
     } catch (err: any) {
