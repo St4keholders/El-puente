@@ -9,6 +9,7 @@ import {
   copyGoogleAvatarToStorage,
   setOnboardingCompletedCookie,
   clearOnboardingCookie,
+  signOutAction,
 } from "@/lib/actions/auth";
 import {
   IconoCheckCirculo,
@@ -131,7 +132,8 @@ function BienvenidaContent() {
 
         if (profile?.onboarding_completed_at) {
           await setOnboardingCompletedCookie();
-          router.replace(next);
+          const target = (!next || next === "/bienvenida") ? "/" : next;
+          window.location.href = target;
           return;
         }
 
@@ -266,10 +268,18 @@ function BienvenidaContent() {
   };
 
   const handleSignOut = async () => {
-    const supabase = createClient();
-    await supabase.auth.signOut();
-    await clearOnboardingCookie();
-    router.replace("/");
+    try {
+      const supabase = createClient();
+      await supabase.auth.signOut();
+    } catch (err) {
+      console.warn("Client signOut error:", err);
+    }
+    try {
+      await signOutAction();
+    } catch (err) {
+      console.warn("Server signOutAction error:", err);
+    }
+    window.location.href = "/";
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -397,7 +407,8 @@ function BienvenidaContent() {
       // 3. Marcar cookie de bienvenida completada
       await setOnboardingCompletedCookie();
 
-      router.replace(next);
+      const targetUrl = (!next || next === "/bienvenida") ? "/" : next;
+      window.location.href = targetUrl;
     } catch (err: any) {
       console.error("Error completing onboarding:", err);
       setErrorMsg("Ocurrió un error inesperado al guardar. Intenta de nuevo.");

@@ -139,6 +139,7 @@ function NuevaCausaContent() {
   const [causeId, setCauseId] = useState<string | null>(null);
   const [initializing, setInitializing] = useState(true);
   const [initError, setInitError] = useState<string | null>(null);
+  const [retryCount, setRetryCount] = useState(0);
   const [autoSaving, setAutoSaving] = useState(false);
   const [publishError, setPublishError] = useState<{ message: string; step?: number } | null>(null);
   const [isPublishing, setIsPublishing] = useState(false);
@@ -216,6 +217,11 @@ function NuevaCausaContent() {
       router.push(`/entrar?next=/causa/nueva`);
       return;
     }
+
+    const timeout = setTimeout(() => {
+      setInitError("La carga tardó demasiado tiempo. Por favor reintenta.");
+      setInitializing(false);
+    }, 10000);
 
     async function initDraft() {
       try {
@@ -392,12 +398,13 @@ function NuevaCausaContent() {
         }
         setInitError(err?.message || "No se pudo inicializar el borrador. Verifica tu conexión.");
       } finally {
+        clearTimeout(timeout);
         setInitializing(false);
       }
     }
 
     initDraft();
-  }, [user, userLoading]);
+  }, [user, userLoading, retryCount]);
 
   // 2. Debounced auto-save (800ms)
   useEffect(() => {
@@ -1156,8 +1163,12 @@ function NuevaCausaContent() {
         <IconoAlerta size={32} className="text-red-500" />
         <p className="text-text-secondary text-sm text-center max-w-sm">{initError}</p>
         <button
-          onClick={() => { setInitError(null); setInitializing(true); }}
-          className="px-5 py-2.5 rounded-xl bg-accent text-white text-sm font-semibold hover:bg-accent/90"
+          onClick={() => {
+            setInitError(null);
+            setInitializing(true);
+            setRetryCount((c) => c + 1);
+          }}
+          className="px-5 py-2.5 rounded-xl bg-accent text-white text-sm font-semibold hover:bg-accent/90 cursor-pointer"
         >
           Reintentar
         </button>

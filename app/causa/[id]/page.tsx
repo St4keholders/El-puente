@@ -135,9 +135,9 @@ export default async function CauseDetailPage(props: CausePageProps) {
     notFound();
   }
 
-  // Métodos de donación (RLS: solo con sesión)
+  // Métodos de donación (RLS: solo con sesión, o si es causa de ejemplo)
   let donationMethods: any[] = [];
-  if (user) {
+  if (user || cause.is_example) {
     const { data: methods } = await supabase
       .from("donation_methods")
       .select("*")

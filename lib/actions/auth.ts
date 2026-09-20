@@ -98,6 +98,28 @@ export async function clearOnboardingCookie() {
 }
 
 /**
+ * Cierra sesión completamente en el servidor, limpiando cookies de auth y onboarding.
+ */
+export async function signOutAction() {
+  try {
+    const supabase = await createClient();
+    await supabase.auth.signOut();
+  } catch (err) {
+    console.warn("Error calling supabase.auth.signOut on server:", err);
+  }
+
+  const cookieStore = await cookies();
+  cookieStore.delete("puente-bienvenida");
+
+  const allCookies = cookieStore.getAll();
+  for (const c of allCookies) {
+    if (c.name.startsWith("sb-") || c.name.includes("auth-token")) {
+      cookieStore.delete(c.name);
+    }
+  }
+}
+
+/**
  * Elimina la cuenta y todos sus datos en cascada (Sección 5.6).
  */
 export async function deleteUserAccount(confirmUsername: string): Promise<{ success: boolean; error?: string }> {

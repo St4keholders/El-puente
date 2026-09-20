@@ -92,7 +92,7 @@ export async function proxy(request: NextRequest) {
         .from("profiles")
         .select("onboarding_completed_at")
         .eq("id", user.id)
-        .single();
+        .maybeSingle();
 
       if (profile?.onboarding_completed_at) {
         // Establecer cookie para evitar consultas futuras

@@ -8,6 +8,7 @@ import { ThemeToggle } from "@/components/layout/ThemeToggle";
 import { useUser } from "@/lib/hooks/useUser";
 import { IconoMas, IconoMenuHorizontal, IconoUsuario, IconoSalir, IconoGuardar, IconoAjustes, IconoAyuda, IconoCheckCirculo, IconoArchivo } from "@/components/iconos";
 import { createClient } from "@/lib/supabase/client";
+import { signOutAction } from "@/lib/actions/auth";
 
 export function Header() {
   const pathname = usePathname();
@@ -16,8 +17,17 @@ export function Header() {
   const [showUserMenu, setShowUserMenu] = useState(false);
 
   const handleSignOut = async () => {
-    const supabase = createClient();
-    await supabase.auth.signOut();
+    try {
+      const supabase = createClient();
+      await supabase.auth.signOut();
+    } catch (err) {
+      console.warn("Client signOut error:", err);
+    }
+    try {
+      await signOutAction();
+    } catch (err) {
+      console.warn("Server signOutAction error:", err);
+    }
     window.location.href = "/";
   };
 
@@ -144,33 +154,104 @@ export function Header() {
             <span>Crear una causa</span>
           </Link>
 
-          {/* Autenticación: Sin sesión = Entrar | Con sesión = Perfil (Sección 4) */}
+          {/* Autenticación: Sin sesión = Entrar | Con sesión = Perfil con menú desplegable */}
           {user ? (
-            <Link
-              href="/perfil"
-              className="relative inline-flex items-center gap-2 rounded-xl border border-[var(--line)] bg-[var(--field)] pl-2 pr-3.5 py-1.5 text-sm font-semibold text-[var(--ink)] transition-colors hover:bg-[var(--hover)] hover:border-[var(--glass-edge)]"
-              aria-label={!hasPhone ? "Perfil, tienes datos pendientes" : "Perfil"}
-            >
-              <div className="relative flex h-6 w-6 items-center justify-center rounded-full overflow-hidden bg-[var(--avatar)] border border-[var(--line)] text-xs font-semibold text-[var(--ink)] flex-shrink-0">
-                {profile?.avatar_url ? (
-                  <img
-                    src={profile.avatar_url}
-                    alt=""
-                    referrerPolicy="no-referrer"
-                    className="h-full w-full object-cover"
+            <div className="relative">
+              <button
+                type="button"
+                onClick={() => setShowUserMenu(!showUserMenu)}
+                className="relative inline-flex items-center gap-2 rounded-xl border border-[var(--line)] bg-[var(--field)] pl-2 pr-3 py-1.5 text-sm font-semibold text-[var(--ink)] transition-colors hover:bg-[var(--hover)] hover:border-[var(--glass-edge)] cursor-pointer"
+                aria-expanded={showUserMenu}
+                aria-haspopup="true"
+                aria-label={!hasPhone ? "Menú de usuario, tienes datos pendientes" : "Menú de usuario"}
+              >
+                <div className="relative flex h-6 w-6 items-center justify-center rounded-full overflow-hidden bg-[var(--avatar)] border border-[var(--line)] text-xs font-semibold text-[var(--ink)] flex-shrink-0">
+                  {profile?.avatar_url ? (
+                    <img
+                      src={profile.avatar_url}
+                      alt=""
+                      referrerPolicy="no-referrer"
+                      className="h-full w-full object-cover"
+                    />
+                  ) : (
+                    <span>{(profile?.full_name || user.email || "U")[0].toUpperCase()}</span>
+                  )}
+                </div>
+                <span className="max-w-[100px] truncate">{profile?.full_name?.split(" ")[0] || "Perfil"}</span>
+                {!hasPhone && (
+                  <span
+                    aria-hidden="true"
+                    className="absolute -top-1 -right-1 h-2.5 w-2.5 rounded-full bg-[var(--accent)] ring-2 ring-[var(--surface-solid)] animate-pulse"
                   />
-                ) : (
-                  <span>{(profile?.full_name || user.email || "U")[0].toUpperCase()}</span>
                 )}
-              </div>
-              <span>Perfil</span>
-              {!hasPhone && (
-                <span
-                  aria-hidden="true"
-                  className="absolute -top-1 -right-1 h-2.5 w-2.5 rounded-full bg-[var(--accent)] ring-2 ring-[var(--surface-solid)] animate-pulse"
-                />
+              </button>
+
+              {showUserMenu && (
+                <Glass
+                  variant="menu"
+                  className="absolute right-0 top-full mt-2 w-56 p-2 shadow-2xl z-50 animate-fade-in"
+                >
+                  <div className="px-3 py-2 border-b border-[var(--line)] mb-1">
+                    <p className="text-xs font-bold text-[var(--ink)] truncate">
+                      {profile?.full_name || "Mi Cuenta"}
+                    </p>
+                    <p className="text-[11px] font-mono text-[var(--ink-3)] truncate">
+                      {profile?.username ? `@${profile.username}` : user.email}
+                    </p>
+                  </div>
+
+                  <Link
+                    href="/perfil"
+                    onClick={() => setShowUserMenu(false)}
+                    className="flex items-center gap-2.5 rounded-xl px-3 py-2 text-xs font-medium text-[var(--ink)] hover:bg-[var(--hover)] transition-colors"
+                  >
+                    <IconoUsuario size={15} className="text-[var(--ink-2)]" />
+                    <span>Mi perfil</span>
+                  </Link>
+
+                  <Link
+                    href="/perfil/causas"
+                    onClick={() => setShowUserMenu(false)}
+                    className="flex items-center gap-2.5 rounded-xl px-3 py-2 text-xs font-medium text-[var(--ink)] hover:bg-[var(--hover)] transition-colors"
+                  >
+                    <IconoArchivo size={15} className="text-[var(--ink-2)]" />
+                    <span>Mis causas</span>
+                  </Link>
+
+                  <Link
+                    href="/perfil/guardadas"
+                    onClick={() => setShowUserMenu(false)}
+                    className="flex items-center gap-2.5 rounded-xl px-3 py-2 text-xs font-medium text-[var(--ink)] hover:bg-[var(--hover)] transition-colors"
+                  >
+                    <IconoGuardar size={15} className="text-[var(--ink-2)]" />
+                    <span>Guardadas</span>
+                  </Link>
+
+                  <Link
+                    href="/perfil/cuenta"
+                    onClick={() => setShowUserMenu(false)}
+                    className="flex items-center gap-2.5 rounded-xl px-3 py-2 text-xs font-medium text-[var(--ink)] hover:bg-[var(--hover)] transition-colors"
+                  >
+                    <IconoAjustes size={15} className="text-[var(--ink-2)]" />
+                    <span>Cuenta y privacidad</span>
+                  </Link>
+
+                  <div className="my-1 border-t border-[var(--line)]" />
+
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setShowUserMenu(false);
+                      handleSignOut();
+                    }}
+                    className="w-full flex items-center gap-2.5 rounded-xl px-3 py-2 text-xs font-medium text-rose-400 hover:bg-rose-500/10 transition-colors cursor-pointer text-left"
+                  >
+                    <IconoSalir size={15} className="text-rose-400" />
+                    <span>Cerrar sesión</span>
+                  </button>
+                </Glass>
               )}
-            </Link>
+            </div>
           ) : (
             <Link
               href="/entrar"

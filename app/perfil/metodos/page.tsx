@@ -57,6 +57,11 @@ export default function MetodosPagoPage() {
 
   const loadMethods = async () => {
     if (!user) return;
+    const timeout = setTimeout(() => {
+      setFetchError(true);
+      setLoading(false);
+    }, 10000);
+
     try {
       const { data, error } = await supabase
         .from("profile_donation_methods")
@@ -74,6 +79,7 @@ export default function MetodosPagoPage() {
       console.error("Error loading methods:", err);
       setFetchError(true);
     } finally {
+      clearTimeout(timeout);
       setLoading(false);
     }
   };

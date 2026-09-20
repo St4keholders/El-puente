@@ -120,6 +120,12 @@ export default function MisCausasPage() {
         setLoadingMore(true);
       }
 
+      const timeout = setTimeout(() => {
+        setPageError("No pudimos cargar esta sección. La solicitud tardó demasiado.");
+        setLoading(false);
+        setLoadingMore(false);
+      }, 10000);
+
       try {
         let query = supabase
           .from("causes")
@@ -229,6 +235,7 @@ export default function MisCausasPage() {
         console.error("Error loading causes:", err);
         setPageError("No pudimos cargar esta sección");
       } finally {
+        clearTimeout(timeout);
         setLoading(false);
         setLoadingMore(false);
       }

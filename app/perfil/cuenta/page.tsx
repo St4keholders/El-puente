@@ -5,7 +5,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { useUser } from "@/lib/hooks/useUser";
-import { clearOnboardingCookie, deleteUserAccount } from "@/lib/actions/auth";
+import { clearOnboardingCookie, signOutAction, deleteUserAccount } from "@/lib/actions/auth";
 import {
   IconoAlerta,
   IconoBasura,
@@ -34,26 +34,32 @@ export default function CuentaYPrivacidadPage() {
   const handleSignOut = async () => {
     setSigningOut(true);
     try {
-      await clearOnboardingCookie();
       await supabase.auth.signOut();
-      window.location.href = "/";
     } catch (err) {
-      console.error("Error signing out:", err);
-      window.location.href = "/";
+      console.warn("Client signOut error:", err);
     }
+    try {
+      await signOutAction();
+    } catch (err) {
+      console.warn("Server signOutAction error:", err);
+    }
+    window.location.href = "/";
   };
 
   // Global sign out
   const handleSignOutGlobal = async () => {
     setSigningOutGlobal(true);
     try {
-      await clearOnboardingCookie();
       await supabase.auth.signOut({ scope: "global" });
-      window.location.href = "/";
     } catch (err) {
-      console.error("Error signing out globally:", err);
-      window.location.href = "/";
+      console.warn("Client global signOut error:", err);
     }
+    try {
+      await signOutAction();
+    } catch (err) {
+      console.warn("Server signOutAction error:", err);
+    }
+    window.location.href = "/";
   };
 
   // Delete account

@@ -23,8 +23,8 @@ export function useUser() {
 
         if (user) {
           const [{ data: profileData }, { data: privateData }] = await Promise.all([
-            supabase.from("profiles").select("*").eq("id", user.id).single(),
-            supabase.from("profile_private").select("phone").eq("id", user.id).single(),
+            supabase.from("profiles").select("*").eq("id", user.id).maybeSingle(),
+            supabase.from("profile_private").select("phone").eq("id", user.id).maybeSingle(),
           ]);
           setProfile(profileData);
           setHasPhone(Boolean(privateData?.phone));
@@ -46,8 +46,8 @@ export function useUser() {
         setUser(session?.user ?? null);
         if (session?.user) {
           const [{ data: profileData }, { data: privateData }] = await Promise.all([
-            supabase.from("profiles").select("*").eq("id", session.user.id).single(),
-            supabase.from("profile_private").select("phone").eq("id", session.user.id).single(),
+            supabase.from("profiles").select("*").eq("id", session.user.id).maybeSingle(),
+            supabase.from("profile_private").select("phone").eq("id", session.user.id).maybeSingle(),
           ]);
           setProfile(profileData);
           setHasPhone(Boolean(privateData?.phone));
@@ -69,8 +69,8 @@ export function useUser() {
     const { data: { user: currentUser } } = await supabase.auth.getUser();
     if (currentUser) {
       const [{ data: profileData }, { data: privateData }] = await Promise.all([
-        supabase.from("profiles").select("*").eq("id", currentUser.id).single(),
-        supabase.from("profile_private").select("phone").eq("id", currentUser.id).single(),
+        supabase.from("profiles").select("*").eq("id", currentUser.id).maybeSingle(),
+        supabase.from("profile_private").select("phone").eq("id", currentUser.id).maybeSingle(),
       ]);
       setProfile(profileData);
       setHasPhone(Boolean(privateData?.phone));

@@ -3,8 +3,9 @@
 import React from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { FondoConstelacion } from "@/components/fondo/FondoConstelacion";
 import { useUser } from "@/lib/hooks/useUser";
+import { createClient } from "@/lib/supabase/client";
+import { signOutAction } from "@/lib/actions/auth";
 import {
   IconoUsuario,
   IconoBilletera,
@@ -12,6 +13,7 @@ import {
   IconoGuardar,
   IconoAjustes,
   IconoFlechaDerecha,
+  IconoSalir,
 } from "@/components/iconos";
 
 const NAV_ITEMS = [
@@ -33,11 +35,6 @@ export default function PerfilLayout({ children }: { children: React.ReactNode }
 
   return (
     <div className="relative min-h-screen w-full pt-24 sm:pt-28 lg:pt-32 pb-24">
-      {/* Fondo Stakeholders */}
-      <FondoConstelacion />
-      <div className="fondo-grano" aria-hidden="true" />
-      <div className="fondo-resplandor" aria-hidden="true" />
-
       <div className="relative z-[2] w-full max-w-[1280px] mx-auto px-4 sm:px-8 py-2 sm:py-4">
         {/* ==========================================================
             BARRA DE PESTAÑAS HORIZONTAL PARA MÓVIL Y TABLET (< 1024px)
@@ -161,6 +158,31 @@ export default function PerfilLayout({ children }: { children: React.ReactNode }
                   );
                 })}
               </nav>
+
+              {/* Botón Cerrar Sesión en Barra Lateral */}
+              <div className="pt-3 border-t border-[var(--line)]">
+                <button
+                  type="button"
+                  onClick={async () => {
+                    try {
+                      const supabase = createClient();
+                      await supabase.auth.signOut();
+                    } catch (err) {
+                      console.warn("Client signOut error:", err);
+                    }
+                    try {
+                      await signOutAction();
+                    } catch (err) {
+                      console.warn("Server signOutAction error:", err);
+                    }
+                    window.location.href = "/";
+                  }}
+                  className="w-full flex items-center gap-3 py-2.5 px-3.5 rounded-xl text-xs font-semibold text-rose-400 hover:bg-rose-500/10 transition-colors cursor-pointer text-left"
+                >
+                  <IconoSalir size={17} className="text-rose-400" />
+                  <span>Cerrar sesión</span>
+                </button>
+              </div>
             </div>
           </aside>
 

@@ -107,6 +107,8 @@ export async function fetchFeedPage(
       currency,
       comments_count,
       saves_count,
+      collection_type,
+      is_example,
       author:profiles!causes_author_id_fkey(
         id,
         full_name,
@@ -159,6 +161,8 @@ export async function fetchFeedPage(
         currency,
         comments_count,
         saves_count,
+        collection_type,
+        is_example,
         author:profiles!causes_author_id_fkey(
           id,
           full_name,

@@ -28,6 +28,12 @@ export default function CausasGuardadasPage() {
         setLoadingMore(true);
       }
 
+      const timeout = setTimeout(() => {
+        setFetchError(true);
+        setLoading(false);
+        setLoadingMore(false);
+      }, 10000);
+
       try {
         let savesQuery = supabase
           .from("saves")
@@ -173,6 +179,7 @@ export default function CausasGuardadasPage() {
         console.error("Error loading saved causes:", err);
         setFetchError(true);
       } finally {
+        clearTimeout(timeout);
         setLoading(false);
         setLoadingMore(false);
       }

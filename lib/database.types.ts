@@ -783,6 +783,12 @@ export type Database = {
           title: string | null
           updated_at: string
         }[]
+        SetofOptions: {
+          from: "*"
+          to: "causes"
+          isOneToOne: false
+          isSetofReturn: true
+        }
       }
       feed_facets: {
         Args: {
@@ -826,6 +832,12 @@ export type Database = {
           title: string | null
           updated_at: string
         }[]
+        SetofOptions: {
+          from: "*"
+          to: "causes"
+          isOneToOne: false
+          isSetofReturn: true
+        }
       }
       search_people_and_causes: {
         Args: { max_results?: number; q: string }
