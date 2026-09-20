@@ -5,7 +5,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { useUser } from "@/lib/hooks/useUser";
-import { clearOnboardingCookie, signOutAction, deleteUserAccount } from "@/lib/actions/auth";
+import { signOutAction, deleteUserAccount } from "@/lib/actions/auth";
 import {
   IconoAlerta,
   IconoBasura,

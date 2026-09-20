@@ -76,29 +76,7 @@ export async function copyGoogleAvatarToStorage(googleAvatarUrl?: string | null)
 }
 
 /**
- * Marca la cookie puente-bienvenida (Sección 1.5).
- */
-export async function setOnboardingCompletedCookie() {
-  const cookieStore = await cookies();
-  cookieStore.set("puente-bienvenida", "1", {
-    httpOnly: true,
-    secure: process.env.NODE_ENV === "production",
-    sameSite: "lax",
-    maxAge: 365 * 24 * 60 * 60, // 1 año
-    path: "/",
-  });
-}
-
-/**
- * Borra la cookie puente-bienvenida al cerrar sesión (Sección 1.5).
- */
-export async function clearOnboardingCookie() {
-  const cookieStore = await cookies();
-  cookieStore.delete("puente-bienvenida");
-}
-
-/**
- * Cierra sesión completamente en el servidor, limpiando cookies de auth y onboarding.
+ * Cierra sesión completamente en el servidor, limpiando cookies de auth.
  */
 export async function signOutAction() {
   try {
@@ -109,8 +87,6 @@ export async function signOutAction() {
   }
 
   const cookieStore = await cookies();
-  cookieStore.delete("puente-bienvenida");
-
   const allCookies = cookieStore.getAll();
   for (const c of allCookies) {
     if (c.name.startsWith("sb-") || c.name.includes("auth-token")) {
@@ -154,7 +130,6 @@ export async function deleteUserAccount(confirmUsername: string): Promise<{ succ
       // Intentar borrado con el cliente autenticado si no hay service role key disponible
       await supabase.from("profiles").delete().eq("id", uid);
       await supabase.auth.signOut();
-      await clearOnboardingCookie();
       return { success: true };
     }
 
@@ -188,8 +163,6 @@ export async function deleteUserAccount(confirmUsername: string): Promise<{ succ
 
     // Cerrar sesión y limpiar cookies
     await supabase.auth.signOut();
-    await clearOnboardingCookie();
-
     return { success: true };
   } catch (err: any) {
     console.error("Error in deleteUserAccount:", err);

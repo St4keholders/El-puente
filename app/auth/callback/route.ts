@@ -45,24 +45,9 @@ export async function GET(request: NextRequest) {
     .eq("id", uid)
     .maybeSingle();
 
-  const response = NextResponse.redirect(
-    new URL(
-      perfil?.onboarding_completed_at
-        ? next
-        : `/bienvenida?next=${encodeURIComponent(next)}`,
-      origin
-    )
-  );
+  const destino = perfil?.onboarding_completed_at
+    ? next
+    : `/bienvenida?next=${encodeURIComponent(next)}`;
 
-  if (perfil?.onboarding_completed_at) {
-    response.cookies.set("puente-bienvenida", "1", {
-      path: "/",
-      maxAge: 31536000,
-      sameSite: "lax",
-      secure: process.env.NODE_ENV === "production",
-      httpOnly: false,
-    });
-  }
-
-  return response;
+  return NextResponse.redirect(new URL(destino, origin));
 }

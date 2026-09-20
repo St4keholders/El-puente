@@ -1,60 +1,61 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { createServerClient } from "@supabase/ssr";
 
+function createRedirectWithCookies(url: URL | string, baseResponse: NextResponse) {
+  const redirectRes = NextResponse.redirect(url);
+  baseResponse.cookies.getAll().forEach((cookie) => {
+    redirectRes.cookies.set(cookie.name, cookie.value, cookie);
+  });
+  return redirectRes;
+}
+
 export async function proxy(request: NextRequest) {
   const pathname = request.nextUrl.pathname;
-
-  // Redirecciones directas requeridas (Sección 4)
-  if (pathname === "/guardadas" || pathname.startsWith("/guardadas/")) {
-    const url = request.nextUrl.clone();
-    url.pathname = "/perfil/guardadas";
-    return NextResponse.redirect(url);
-  }
-
-  if (pathname === "/ajustes" || pathname.startsWith("/ajustes/")) {
-    const url = request.nextUrl.clone();
-    url.pathname = "/perfil";
-    return NextResponse.redirect(url);
-  }
 
   let supabaseResponse = NextResponse.next({
     request,
   });
 
-  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
-  const supabaseAnonKey =
-    process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY ||
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+  // Redirecciones directas requeridas (Sección 4)
+  if (pathname === "/guardadas" || pathname.startsWith("/guardadas/")) {
+    const url = request.nextUrl.clone();
+    url.pathname = "/perfil/guardadas";
+    return createRedirectWithCookies(url, supabaseResponse);
+  }
 
-  if (!supabaseUrl || !supabaseAnonKey) {
-    // If environment variables are missing (e.g. during build or initial setup), pass through without crashing
+  if (pathname === "/ajustes" || pathname.startsWith("/ajustes/")) {
+    const url = request.nextUrl.clone();
+    url.pathname = "/perfil";
+    return createRedirectWithCookies(url, supabaseResponse);
+  }
+
+  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+  const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY;
+
+  if (!supabaseUrl || !supabaseKey) {
     return supabaseResponse;
   }
 
-  const supabase = createServerClient(
-    supabaseUrl,
-    supabaseAnonKey,
-    {
-      cookies: {
-        getAll() {
-          return request.cookies.getAll();
-        },
-        setAll(cookiesToSet: Array<{ name: string; value: string; options?: any }>) {
-          cookiesToSet.forEach(({ name, value }) =>
-            request.cookies.set(name, value)
-          );
-          supabaseResponse = NextResponse.next({
-            request,
-          });
-          cookiesToSet.forEach(({ name, value, options }) =>
-            supabaseResponse.cookies.set(name, value, options)
-          );
-        },
+  const supabase = createServerClient(supabaseUrl, supabaseKey, {
+    cookies: {
+      getAll() {
+        return request.cookies.getAll();
       },
-    }
-  );
+      setAll(cookiesToSet: Array<{ name: string; value: string; options?: any }>) {
+        cookiesToSet.forEach(({ name, value }) =>
+          request.cookies.set(name, value)
+        );
+        supabaseResponse = NextResponse.next({
+          request,
+        });
+        cookiesToSet.forEach(({ name, value, options }) =>
+          supabaseResponse.cookies.set(name, value, options)
+        );
+      },
+    },
+  });
 
-  // Validate session securely in server environment
+  // Validar sesión del usuario en el servidor
   const {
     data: { user },
   } = await supabase.auth.getUser();
@@ -70,11 +71,10 @@ export async function proxy(request: NextRequest) {
   if (isProtectedPath && !user) {
     const redirectUrl = new URL("/entrar", request.url);
     redirectUrl.searchParams.set("next", pathname);
-    return NextResponse.redirect(redirectUrl);
+    return createRedirectWithCookies(redirectUrl, supabaseResponse);
   }
 
-  // Control de Onboarding / Bienvenida (Sección 1.5)
-  // Rutas exentas de redirección a bienvenida
+  // Control de Bienvenida (PLAN-RESCATE 5.3: Sin cookie intermedia, consulta directa de la verdad)
   const isExemptRoute =
     pathname.startsWith("/bienvenida") ||
     pathname.startsWith("/auth") ||
@@ -84,31 +84,16 @@ export async function proxy(request: NextRequest) {
     pathname === "/favicon.ico";
 
   if (user && !isExemptRoute) {
-    const hasBienvenidaCookie = request.cookies.get("puente-bienvenida")?.value === "1";
+    const { data: profile } = await supabase
+      .from("profiles")
+      .select("onboarding_completed_at")
+      .eq("id", user.id)
+      .maybeSingle();
 
-    if (!hasBienvenidaCookie) {
-      // Consultar una sola vez onboarding_completed_at
-      const { data: profile } = await supabase
-        .from("profiles")
-        .select("onboarding_completed_at")
-        .eq("id", user.id)
-        .maybeSingle();
-
-      if (profile?.onboarding_completed_at) {
-        // Establecer cookie para evitar consultas futuras
-        supabaseResponse.cookies.set("puente-bienvenida", "1", {
-          httpOnly: false,
-          secure: process.env.NODE_ENV === "production",
-          sameSite: "lax",
-          maxAge: 365 * 24 * 60 * 60,
-          path: "/",
-        });
-      } else {
-        // Redirigir a bienvenida sin permitir saltársela
-        const bienvenidaUrl = new URL("/bienvenida", request.url);
-        bienvenidaUrl.searchParams.set("next", pathname);
-        return NextResponse.redirect(bienvenidaUrl);
-      }
+    if (!profile?.onboarding_completed_at) {
+      const bienvenidaUrl = new URL("/bienvenida", request.url);
+      bienvenidaUrl.searchParams.set("next", pathname);
+      return createRedirectWithCookies(bienvenidaUrl, supabaseResponse);
     }
   }
 

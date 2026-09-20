@@ -63,16 +63,6 @@ export async function completeOnboardingAction(data: OnboardingInput) {
       };
     }
 
-    // Establecer la cookie para evitar chequeos redundantes
-    const cookieStore = await cookies();
-    cookieStore.set("puente-bienvenida", "1", {
-      path: "/",
-      maxAge: 31536000,
-      sameSite: "lax",
-      secure: process.env.NODE_ENV === "production",
-      httpOnly: false,
-    });
-
     const targetUrl = !data.next || data.next === "/bienvenida" ? "/" : data.next;
     return { success: true, redirect: targetUrl };
   } catch (err: any) {
