@@ -58,120 +58,99 @@ export default function MisDatosPage() {
   const [copiedId, setCopiedId] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  // Load private data once user is available
+  // Cargar datos de perfil y teléfono sin bloquear la UI
   useEffect(() => {
-    if (userLoading) return; // wait for auth
+    if (userLoading) return;
 
     if (!user) {
       router.push("/entrar?next=/perfil");
       return;
     }
 
-    async function loadPrivateData() {
-      if (!user) return;
+    const assignedId = `id_${user.id.replace(/-/g, "").slice(0, 10)}`;
+    const meta = user.user_metadata || {};
+    const fallbackName =
+      meta.full_name || meta.name || user.email?.split("@")[0] || "Usuario";
 
-      // Safety timeout: if something hangs, stop the spinner
-      const timeout = setTimeout(() => {
-        setLoadError("No pudimos cargar tus datos. Comprueba tu conexión.");
-        setLoading(false);
-      }, 6000);
+    // Si ya tenemos perfil en memoria, poblar de inmediato y liberar spinner
+    if (profile) {
+      setAvatarUrl(profile.avatar_url || "");
+      setFullName(profile.full_name || fallbackName);
+      setUsername(profile.username || assignedId);
+      setBio(profile.bio || "");
+      setCountryCode(profile.country_code || "");
+      setCity(profile.city || "");
+      setLoading(false);
+    }
 
+    const currentUserId = user.id;
+
+    async function loadData() {
       try {
-        let currentProfile = profile;
-
-        // Si el perfil aún no está en memoria, consultarlo directamente
-        if (!currentProfile) {
-          const { data: directProfile } = await supabase
+        let currentProf = profile;
+        if (!currentProf) {
+          const { data: directProf } = await supabase
             .from("profiles")
             .select("*")
-            .eq("id", user.id)
+            .eq("id", currentUserId)
             .maybeSingle();
-          currentProfile = directProfile;
+          currentProf = directProf;
         }
 
-        // Si aún no existe la fila de perfil en la base de datos, auto-sanarla
-        if (!currentProfile) {
-          const meta = user.user_metadata || {};
-          const fName = meta.full_name || meta.name || user.email?.split("@")[0] || "Usuario";
-          const uName = `usuario_${user.id.substring(0, 6)}`;
-          try {
-            await supabase.from("profiles").upsert({
-              id: user.id,
-              full_name: fName,
-              username: uName,
-              avatar_url: meta.avatar_url || meta.picture || null,
-            });
-          } catch {}
+        const effectiveName = currentProf?.full_name || fallbackName;
+        const effectiveUser = currentProf?.username || assignedId;
+        const effectiveAvatar = currentProf?.avatar_url || meta.avatar_url || meta.picture || "";
 
-          const { data: healedProf } = await supabase
-            .from("profiles")
-            .select("*")
-            .eq("id", user.id)
-            .maybeSingle();
-          currentProfile = healedProf;
-        }
+        setAvatarUrl(effectiveAvatar);
+        setFullName(effectiveName);
+        setUsername(effectiveUser);
+        setBio(currentProf?.bio || "");
+        setCountryCode(currentProf?.country_code || "");
+        setCity(currentProf?.city || "");
 
-        const { data: privData, error: privErr } = await supabase
+        // Consultar datos privados (teléfono)
+        const { data: privData } = await supabase
           .from("profile_private")
           .select("phone")
-          .eq("id", user.id)
+          .eq("id", currentUserId)
           .maybeSingle();
-
-        let priv = privData;
-        // Si no existe la fila privada, crearla
-        if (!priv && !privErr) {
-          try {
-            await supabase.from("profile_private").upsert({ id: user.id });
-          } catch {}
-          priv = { phone: null };
-        }
 
         let country = "CO";
         let numberPart = "";
-
-        if (priv?.phone) {
+        if (privData?.phone) {
           try {
-            const parsed = parsePhoneNumber(priv.phone);
+            const parsed = parsePhoneNumber(privData.phone);
             if (parsed) {
               country = parsed.country || "CO";
               numberPart = parsed.nationalNumber;
             }
           } catch {
-            numberPart = priv.phone ?? "";
+            numberPart = privData.phone ?? "";
           }
         }
 
-        const initial = {
-          avatar_url: currentProfile?.avatar_url || "",
-          full_name: currentProfile?.full_name || "",
-          username: currentProfile?.username || "",
-          bio: currentProfile?.bio || "",
-          country_code: currentProfile?.country_code || "",
-          city: currentProfile?.city || "",
-          phone_country: country,
-          phone_raw: numberPart,
-        };
-
-        setAvatarUrl(initial.avatar_url);
-        setFullName(initial.full_name);
-        setUsername(initial.username);
-        setBio(initial.bio);
-        setCountryCode(initial.country_code);
-        setCity(initial.city);
         setPhoneCountry(country);
         setPhoneRaw(numberPart);
-        setInitialData(initial);
+
+        setInitialData({
+          avatar_url: effectiveAvatar,
+          full_name: effectiveName,
+          username: effectiveUser,
+          bio: currentProf?.bio || "",
+          country_code: currentProf?.country_code || "",
+          city: currentProf?.city || "",
+          phone_country: country,
+          phone_raw: numberPart,
+        });
         setLoadError(null);
       } catch (err: any) {
-        console.error("[perfil] Error cargando datos privados:", err?.code, err?.message);
-        setLoadError("No pudimos cargar esta sección. Intenta de nuevo.");
+        console.warn("[perfil] Error cargando datos:", err);
       } finally {
-        clearTimeout(timeout);
         setLoading(false);
       }
     }
 
-    loadPrivateData();
+    loadData();
   }, [userLoading, user, profile]);
 
 

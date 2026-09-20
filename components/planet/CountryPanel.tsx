@@ -34,6 +34,11 @@ export function CountryPanel({
   useEffect(() => {
     if (!countryCode) return;
 
+    let isMounted = true;
+    const safetyTimer = setTimeout(() => {
+      if (isMounted) setLoading(false);
+    }, 3500);
+
     const fetchCountryCauses = async () => {
       setLoading(true);
       const supabase = createClient();
@@ -54,24 +59,48 @@ export function CountryPanel({
           .order("published_at", { ascending: false })
           .limit(4);
 
+        if (!isMounted) return;
+
         if (!error && data) {
           setCauses(data as any);
           setTotalCount(count ?? data.length);
         } else {
-          if (error) console.error("Error fetching country causes:", error);
+          // Fallback a consulta simple sin join si falla
+          const fallback = await supabase
+            .from("causes")
+            .select("*", { count: "exact" })
+            .eq("status", "activa")
+            .eq("country_code", countryCode)
+            .limit(4);
+
+          if (fallback.data) {
+            setCauses(fallback.data as any);
+            setTotalCount(fallback.count ?? fallback.data.length);
+          } else {
+            setCauses([]);
+            setTotalCount(0);
+          }
+        }
+      } catch (err) {
+        console.warn("Error fetching country causes:", err);
+        if (isMounted) {
           setCauses([]);
           setTotalCount(0);
         }
-      } catch (err) {
-        console.error("Exception fetching country causes:", err);
-        setCauses([]);
-        setTotalCount(0);
       } finally {
-        setLoading(false);
+        clearTimeout(safetyTimer);
+        if (isMounted) {
+          setLoading(false);
+        }
       }
     };
 
     fetchCountryCauses();
+
+    return () => {
+      isMounted = false;
+      clearTimeout(safetyTimer);
+    };
   }, [countryCode]);
 
   if (!countryCode) return null;

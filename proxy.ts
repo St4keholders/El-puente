@@ -97,7 +97,7 @@ export async function proxy(request: NextRequest) {
       if (profile?.onboarding_completed_at) {
         // Establecer cookie para evitar consultas futuras
         supabaseResponse.cookies.set("puente-bienvenida", "1", {
-          httpOnly: true,
+          httpOnly: false,
           secure: process.env.NODE_ENV === "production",
           sameSite: "lax",
           maxAge: 365 * 24 * 60 * 60,

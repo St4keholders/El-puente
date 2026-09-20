@@ -78,7 +78,7 @@ export default function PerfilLayout({ children }: { children: React.ReactNode }
             <div className="p-6 rounded-3xl border border-[var(--line)] bg-[color-mix(in_oklab,var(--bg)_84%,transparent)] shadow-sm space-y-6">
               {/* Identidad del usuario (PLAN.md 4.1) */}
               <div className="flex flex-col items-center text-center">
-                {loading || !profile ? (
+                {loading && !user ? (
                   <div className="flex flex-col items-center space-y-2 animate-pulse w-full">
                     <div className="w-[72px] h-[72px] rounded-full bg-[var(--line)] mb-2" />
                     <div className="w-32 h-4 rounded bg-[var(--line)]" />
@@ -87,30 +87,30 @@ export default function PerfilLayout({ children }: { children: React.ReactNode }
                 ) : (
                   <>
                     <div className="relative w-[72px] h-[72px] rounded-full overflow-hidden border-2 border-[var(--line)] bg-[var(--avatar)] mb-3 shadow-md flex items-center justify-center">
-                      {profile?.avatar_url ? (
+                      {profile?.avatar_url || user?.user_metadata?.avatar_url || user?.user_metadata?.picture ? (
                         <img
-                          src={profile.avatar_url}
-                          alt={profile.full_name}
+                          src={profile?.avatar_url || user?.user_metadata?.avatar_url || user?.user_metadata?.picture}
+                          alt={profile?.full_name || "Foto de perfil"}
                           referrerPolicy="no-referrer"
                           className="w-full h-full object-cover"
                         />
                       ) : (
                         <span className="text-xl font-bold text-[var(--ink)]">
-                          {(profile?.full_name || user?.email || "P")[0].toUpperCase()}
+                          {(profile?.full_name || user?.user_metadata?.full_name || user?.email || "P")[0].toUpperCase()}
                         </span>
                       )}
                     </div>
 
                     <h2 className="text-base font-bold text-[var(--ink)] tracking-tight truncate max-w-full">
-                      {profile?.full_name}
+                      {profile?.full_name || user?.user_metadata?.full_name || user?.email?.split("@")[0] || "Mi perfil"}
                     </h2>
                     <p className="text-xs font-mono text-[var(--ink-3)] truncate max-w-full">
-                      @{profile?.username}
+                      @{profile?.username || (user ? `id_${user.id.replace(/-/g, "").slice(0, 10)}` : "")}
                     </p>
 
-                    {profile?.username && (
+                    {(profile?.username || user?.id) && (
                       <Link
-                        href={`/u/${profile.username}`}
+                        href={`/u/${profile?.username || `id_${user?.id.replace(/-/g, "").slice(0, 10)}`}`}
                         className="mt-3 inline-flex items-center gap-1 text-xs font-medium text-[var(--accent-ink)] hover:underline"
                       >
                         <span>Ver mi perfil público</span>

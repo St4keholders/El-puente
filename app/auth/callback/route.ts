@@ -43,11 +43,26 @@ export async function GET(request: NextRequest) {
     .from("profiles")
     .select("onboarding_completed_at")
     .eq("id", uid)
-    .single();
+    .maybeSingle();
 
-  const destino = perfil?.onboarding_completed_at
-    ? next
-    : `/bienvenida?next=${encodeURIComponent(next)}`;
+  const response = NextResponse.redirect(
+    new URL(
+      perfil?.onboarding_completed_at
+        ? next
+        : `/bienvenida?next=${encodeURIComponent(next)}`,
+      origin
+    )
+  );
 
-  return NextResponse.redirect(new URL(destino, origin));
+  if (perfil?.onboarding_completed_at) {
+    response.cookies.set("puente-bienvenida", "1", {
+      path: "/",
+      maxAge: 31536000,
+      sameSite: "lax",
+      secure: process.env.NODE_ENV === "production",
+      httpOnly: false,
+    });
+  }
+
+  return response;
 }

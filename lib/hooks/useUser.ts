@@ -18,16 +18,75 @@ export function useUser() {
     mountedRef.current = true;
     const supabase = createClient();
 
-    // Temporizador de seguridad: loading NUNCA debe quedarse en true indefinidamente
+    // Temporizador de seguridad rápido: loading nunca debe bloquear la UI por más de 1.5s
     const safetyTimer = setTimeout(() => {
       if (mountedRef.current) {
         setLoading(false);
       }
-    }, 4000);
+    }, 1500);
+
+    const loadProfileData = async (currentUser: User) => {
+      try {
+        const { data: initialProfile } = await supabase
+          .from("profiles")
+          .select("*")
+          .eq("id", currentUser.id)
+          .maybeSingle();
+
+        let profileData = initialProfile;
+
+        // Si no existe perfil en la DB, auto-crearlo con su ID asignado
+        if (!profileData) {
+          const meta = currentUser.user_metadata || {};
+          const fullName =
+            meta.full_name || meta.name || currentUser.email?.split("@")[0] || "Usuario";
+          const assignedId = `id_${currentUser.id.replace(/-/g, "").slice(0, 10)}`;
+
+          try {
+            await supabase.from("profiles").upsert(
+              {
+                id: currentUser.id,
+                full_name: fullName,
+                username: assignedId,
+                avatar_url: meta.avatar_url || meta.picture || null,
+              },
+              { onConflict: "id" }
+            );
+          } catch {}
+
+          const { data: healed } = await supabase
+            .from("profiles")
+            .select("*")
+            .eq("id", currentUser.id)
+            .maybeSingle();
+          profileData = healed;
+        }
+
+        if (mountedRef.current) {
+          setProfile(profileData);
+        }
+
+        // Consultar teléfono sin bloquear
+        const { data: privateData } = await supabase
+          .from("profile_private")
+          .select("phone")
+          .eq("id", currentUser.id)
+          .maybeSingle();
+
+        if (mountedRef.current) {
+          setHasPhone(Boolean(privateData?.phone));
+        }
+      } catch (err) {
+        console.warn("[useUser] Error loading profile details:", err);
+      }
+    };
 
     const fetchUserAndProfile = async () => {
       try {
-        const { data: { user }, error: authErr } = await supabase.auth.getUser();
+        const {
+          data: { user },
+          error: authErr,
+        } = await supabase.auth.getUser();
 
         if (authErr) {
           if (
@@ -35,7 +94,6 @@ export function useUser() {
             authErr.status === 403 ||
             authErr.status === 401
           ) {
-            // Token huérfano de usuario eliminado: limpiar sesión local
             await supabase.auth.signOut().catch(() => {});
           }
           if (mountedRef.current) {
@@ -52,38 +110,7 @@ export function useUser() {
         }
 
         if (user) {
-          const [{ data: initialProfile }, { data: privateData }] = await Promise.all([
-            supabase.from("profiles").select("*").eq("id", user.id).maybeSingle(),
-            supabase.from("profile_private").select("phone").eq("id", user.id).maybeSingle(),
-          ]);
-          let profileData = initialProfile;
-
-          // Auto-sanar fila de perfil si aún no existe en DB
-          if (!profileData) {
-            const meta = user.user_metadata || {};
-            const fullName = meta.full_name || meta.name || user.email?.split("@")[0] || "Usuario";
-            const candidate = `usuario_${user.id.substring(0, 6)}`;
-            try {
-              await supabase.from("profiles").upsert({
-                id: user.id,
-                full_name: fullName,
-                username: candidate,
-                avatar_url: meta.avatar_url || meta.picture || null,
-              });
-            } catch {}
-
-            const { data: healed } = await supabase
-              .from("profiles")
-              .select("*")
-              .eq("id", user.id)
-              .maybeSingle();
-            profileData = healed;
-          }
-
-          if (mountedRef.current) {
-            setProfile(profileData);
-            setHasPhone(Boolean(privateData?.phone));
-          }
+          await loadProfileData(user);
         } else {
           if (mountedRef.current) {
             setProfile(null);
@@ -91,7 +118,7 @@ export function useUser() {
           }
         }
       } catch (err) {
-        console.error("Error fetching user session:", err);
+        console.warn("[useUser] Error fetching user:", err);
       } finally {
         clearTimeout(safetyTimer);
         if (mountedRef.current) {
@@ -102,31 +129,20 @@ export function useUser() {
 
     fetchUserAndProfile();
 
-    const { data: { subscription } } = supabase.auth.onAuthStateChange(
-      async (_event, session) => {
-        if (!mountedRef.current) return;
-        const currentUser = session?.user ?? null;
-        setUser(currentUser);
-        if (currentUser) {
-          const [{ data: profileData }, { data: privateData }] = await Promise.all([
-            supabase.from("profiles").select("*").eq("id", currentUser.id).maybeSingle(),
-            supabase.from("profile_private").select("phone").eq("id", currentUser.id).maybeSingle(),
-          ]);
-          if (mountedRef.current) {
-            setProfile(profileData);
-            setHasPhone(Boolean(privateData?.phone));
-          }
-        } else {
-          if (mountedRef.current) {
-            setProfile(null);
-            setHasPhone(true);
-          }
-        }
-        if (mountedRef.current) {
-          setLoading(false);
-        }
+    const {
+      data: { subscription },
+    } = supabase.auth.onAuthStateChange(async (_event, session) => {
+      if (!mountedRef.current) return;
+      const currentUser = session?.user ?? null;
+      setUser(currentUser);
+      if (currentUser) {
+        await loadProfileData(currentUser);
+      } else {
+        setProfile(null);
+        setHasPhone(true);
       }
-    );
+      setLoading(false);
+    });
 
     return () => {
       mountedRef.current = false;
@@ -137,12 +153,22 @@ export function useUser() {
 
   const refreshProfile = async () => {
     const supabase = createClient();
-    const { data: { user: currentUser } } = await supabase.auth.getUser();
+    const {
+      data: { user: currentUser },
+    } = await supabase.auth.getUser();
     if (currentUser && mountedRef.current) {
-      const [{ data: profileData }, { data: privateData }] = await Promise.all([
-        supabase.from("profiles").select("*").eq("id", currentUser.id).maybeSingle(),
-        supabase.from("profile_private").select("phone").eq("id", currentUser.id).maybeSingle(),
-      ]);
+      const { data: profileData } = await supabase
+        .from("profiles")
+        .select("*")
+        .eq("id", currentUser.id)
+        .maybeSingle();
+
+      const { data: privateData } = await supabase
+        .from("profile_private")
+        .select("phone")
+        .eq("id", currentUser.id)
+        .maybeSingle();
+
       if (mountedRef.current) {
         setProfile(profileData);
         setHasPhone(Boolean(privateData?.phone));
@@ -152,5 +178,3 @@ export function useUser() {
 
   return { user, profile, hasPhone, loading, refreshProfile };
 }
-
-
