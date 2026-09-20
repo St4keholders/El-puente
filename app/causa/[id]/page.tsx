@@ -190,6 +190,16 @@ export default async function CauseDetailPage(props: CausePageProps) {
     isFollowing = Boolean(followRes.data);
   }
 
+  let currentUserProfile = null;
+  if (user) {
+    const { data: prof } = await supabase
+      .from("profiles")
+      .select("id, full_name, username, avatar_url, onboarding_completed_at")
+      .eq("id", user.id)
+      .maybeSingle();
+    currentUserProfile = prof;
+  }
+
   const countries = ((mundoData as any).countries || []) as Array<{ id: string; n: string }>;
   const countryObj = countries.find((c) => c.id === cause.country_code);
 
@@ -209,6 +219,8 @@ export default async function CauseDetailPage(props: CausePageProps) {
         isFollowing={isFollowing}
         isOwner={Boolean(user && user.id === cause.author_id)}
         currentUserId={user?.id || null}
+        currentUser={user ? { id: user.id, email: user.email || "" } : null}
+        currentUserProfile={currentUserProfile}
       />
     </main>
   );

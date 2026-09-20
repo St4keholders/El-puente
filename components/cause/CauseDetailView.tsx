@@ -106,6 +106,14 @@ interface CauseDetailViewProps {
   isFollowing: boolean;
   isOwner: boolean;
   currentUserId?: string | null;
+  currentUser?: { id: string; email: string } | null;
+  currentUserProfile?: {
+    id: string;
+    full_name: string | null;
+    username: string | null;
+    avatar_url: string | null;
+    onboarding_completed_at: string | null;
+  } | null;
 }
 
 const CATEGORY_LABELS: Record<string, string> = {
@@ -136,6 +144,8 @@ export function CauseDetailView({
   isFollowing: initialFollowing,
   isOwner,
   currentUserId,
+  currentUser,
+  currentUserProfile,
 }: CauseDetailViewProps) {
   const router = useRouter();
   const supabase = createClient();
@@ -819,7 +829,12 @@ export function CauseDetailView({
         id="comentarios"
         style={{ scrollMarginTop: "calc(var(--alto-header) + 16px)" } as React.CSSProperties}
       >
-        <CommentsSection causeId={cause.id} causeAuthorId={cause.author_id} />
+        <CommentsSection
+          causeId={cause.id}
+          causeAuthorId={cause.author_id}
+          currentUser={currentUser}
+          currentUserProfile={currentUserProfile}
+        />
       </section>
 
       {/* 10. Lightbox Modal */}

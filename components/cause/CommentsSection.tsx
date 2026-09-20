@@ -2,11 +2,11 @@
 
 import React, { useState, useEffect } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { IconoComentar, IconoEnviar, IconoBasura, IconoEditar, IconoRespuesta, IconoCheck, IconoCerrar, IconoCargando } from "@/components/iconos";
 import { Glass } from "@/components/ui/Glass";
 import { formatDistanceToNow } from "@/lib/utils/date";
 import { createClient } from "@/lib/supabase/client";
-import { useUser } from "@/lib/hooks/useUser";
 
 export interface CommentAuthor {
   id: string;
@@ -32,6 +32,14 @@ interface CommentsSectionProps {
   causeAuthorId: string;
   initialComments?: CommentItem[];
   thread?: "causa" | "resultado";
+  currentUser?: { id: string; email: string } | null;
+  currentUserProfile?: {
+    id: string;
+    full_name: string | null;
+    username: string | null;
+    avatar_url?: string | null;
+    onboarding_completed_at?: string | null;
+  } | null;
 }
 
 export function CommentsSection({
@@ -39,9 +47,12 @@ export function CommentsSection({
   causeAuthorId,
   initialComments = [],
   thread = "causa",
+  currentUser,
+  currentUserProfile,
 }: CommentsSectionProps) {
-  const { user } = useUser();
+  const router = useRouter();
   const supabase = createClient();
+  const isOnboarded = Boolean(currentUser && currentUserProfile?.onboarding_completed_at);
 
   const [comments, setComments] = useState<CommentItem[]>(initialComments);
   const [repliesMap, setRepliesMap] = useState<Record<string, CommentItem[]>>({});
@@ -150,7 +161,14 @@ export function CommentsSection({
   // Submit new comment or reply
   const handleSubmitComment = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!user) return;
+    if (!currentUser) {
+      router.push(`/entrar?next=/causa/${causeId}#comentarios`);
+      return;
+    }
+    if (!isOnboarded) {
+      router.push("/bienvenida");
+      return;
+    }
     const trimmed = newCommentBody.trim();
     if (!trimmed || trimmed.length > 1000) return;
 
@@ -160,7 +178,7 @@ export function CommentsSection({
         .from("comments")
         .insert({
           cause_id: causeId,
-          author_id: user.id,
+          author_id: currentUser.id,
           body: trimmed,
           parent_id: replyTo ? replyTo.id : null,
           thread,
@@ -284,7 +302,24 @@ export function CommentsSection({
       </div>
 
       {/* Input box */}
-      {user ? (
+      {!currentUser ? (
+        <div className="p-4 rounded-2xl glass-surface border border-glass-tint text-center text-xs text-text-secondary">
+          <Link href={`/entrar?next=/causa/${causeId}#comentarios`} className="text-accent underline font-semibold">
+            Inicia sesión con Google
+          </Link>{" "}
+          para dejar un comentario o mensaje de apoyo.
+        </div>
+      ) : !isOnboarded ? (
+        <div className="p-4 rounded-2xl glass-surface border border-glass-tint text-center text-xs text-text-secondary space-y-2">
+          <p>Completa tu nombre de usuario para poder comentar en las causas.</p>
+          <Link
+            href="/bienvenida"
+            className="inline-block px-4 py-1.5 rounded-xl bg-accent text-white font-semibold hover:bg-accent/90 transition-all cursor-pointer"
+          >
+            Completar perfil
+          </Link>
+        </div>
+      ) : (
         <form onSubmit={handleSubmitComment} className="glass-card rounded-2xl p-4 space-y-3">
           {replyTo && (
             <div className="flex items-center justify-between text-xs text-text-secondary bg-glass-surface px-3 py-1.5 rounded-xl border border-glass-tint">
@@ -294,7 +329,7 @@ export function CommentsSection({
               <button
                 type="button"
                 onClick={() => setReplyTo(null)}
-                className="text-text-secondary hover:text-text-primary"
+                className="text-text-secondary hover:text-text-primary cursor-pointer"
               >
                 <IconoCerrar size={14} />
               </button>
@@ -317,7 +352,7 @@ export function CommentsSection({
             <button
               type="submit"
               disabled={isSubmitting || !newCommentBody.trim()}
-              className="self-end p-2.5 rounded-full bg-accent text-white disabled:opacity-30 hover:bg-accent/90 transition-transform active:scale-95"
+              className="self-end p-2.5 rounded-full bg-accent text-white disabled:opacity-30 hover:bg-accent/90 transition-transform active:scale-95 cursor-pointer"
               aria-label="Publicar comentario"
             >
               {isSubmitting ? <IconoCargando size={16} className="animate-spin" /> : <IconoEnviar size={16} />}
@@ -329,20 +364,13 @@ export function CommentsSection({
             <span>{newCommentBody.length} / 1000</span>
           </div>
         </form>
-      ) : (
-        <div className="p-4 rounded-2xl glass-surface border border-glass-tint text-center text-xs text-text-secondary">
-          <Link href={`/entrar?next=/causa/${causeId}#comentarios`} className="text-accent underline font-semibold">
-            Inicia sesión
-          </Link>{" "}
-          para dejar un comentario o mensaje de apoyo.
-        </div>
       )}
 
       {/* Comments stream */}
       <div className="space-y-4">
         {comments.map((comment) => {
-          const isAuthor = user?.id === comment.author_id;
-          const isCauseOwner = user?.id === causeAuthorId;
+          const isAuthor = currentUser?.id === comment.author_id;
+          const isCauseOwner = currentUser?.id === causeAuthorId;
           const canDelete = isAuthor || isCauseOwner;
           const canEdit = isAuthor;
           const replies = repliesMap[comment.id] || [];
@@ -431,17 +459,24 @@ export function CommentsSection({
 
               {/* Footer: Reply button and Toggle Replies */}
               <div className="pl-9 flex items-center gap-4 text-xs">
-                {user && (
+                {isOnboarded ? (
                   <button
                     onClick={() => {
                       setReplyTo(comment);
                       setNewCommentBody(`@${comment.author.username} `);
                     }}
-                    className="text-text-secondary hover:text-accent font-medium flex items-center gap-1"
+                    className="text-text-secondary hover:text-accent font-medium flex items-center gap-1 cursor-pointer"
                   >
                     <IconoRespuesta size={12} /> Responder
                   </button>
-                )}
+                ) : currentUser ? (
+                  <Link
+                    href="/bienvenida"
+                    className="text-text-secondary hover:text-accent font-medium flex items-center gap-1 cursor-pointer"
+                  >
+                    <IconoRespuesta size={12} /> Responder
+                  </Link>
+                ) : null}
 
                 {comment.replies_count > 0 && (
                   <button
@@ -461,7 +496,7 @@ export function CommentsSection({
               {isExpanded && replies.length > 0 && (
                 <div className="pl-9 pt-2 space-y-3 border-l-2 border-glass-tint ml-3">
                   {replies.map((reply) => {
-                    const isReplyAuthor = user?.id === reply.author_id;
+                    const isReplyAuthor = currentUser?.id === reply.author_id;
                     const canDeleteReply = isReplyAuthor || isCauseOwner;
 
                     return (
