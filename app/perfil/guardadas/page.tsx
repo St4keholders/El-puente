@@ -1,295 +1,157 @@
-"use client";
+import { redirect } from "next/navigation";
+import { createClient } from "@/lib/supabase/server";
+import { CausasGuardadasClient } from "./CausasGuardadasClient";
+import type { CauseCardProps, CauseMediaItem } from "@/components/feed/CauseCard";
 
-import React, { useState, useEffect, useRef, useCallback } from "react";
-import Link from "next/link";
-import { createClient } from "@/lib/supabase/client";
-import { useUser } from "@/lib/hooks/useUser";
-import { CauseCard, CauseCardProps, CauseMediaItem } from "@/components/feed/CauseCard";
-import { IconoGuardar, IconoCargando, IconoFlechaDerecha } from "@/components/iconos";
+export const dynamic = "force-dynamic";
+export const revalidate = 0;
 
-export default function CausasGuardadasPage() {
-  const { user, loading: userLoading } = useUser();
-  const supabase = createClient();
+export default async function CausasGuardadasPage() {
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
 
-  const [causes, setCauses] = useState<CauseCardProps[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [fetchError, setFetchError] = useState(false);
-  const [loadingMore, setLoadingMore] = useState(false);
-  const [cursor, setCursor] = useState<string | null>(null);
-  const [hasMore, setHasMore] = useState(false);
+  if (!user) {
+    redirect("/entrar?next=/perfil/guardadas");
+  }
 
-  const observerTarget = useRef<HTMLDivElement>(null);
+  const { data: savesData, error: savesError } = await supabase
+    .from("saves")
+    .select("cause_id, created_at")
+    .eq("user_id", user.id)
+    .order("created_at", { ascending: false })
+    .limit(11);
 
-  const fetchSavedCauses = useCallback(
-    async (userId: string, nextCursor: string | null = null) => {
-      if (!nextCursor) {
-        setLoading(true);
-      } else {
-        setLoadingMore(true);
-      }
-
-      const timeout = setTimeout(() => {
-        setFetchError(true);
-        setLoading(false);
-        setLoadingMore(false);
-      }, 10000);
-
-      try {
-        let savesQuery = supabase
-          .from("saves")
-          .select("cause_id, created_at")
-          .eq("user_id", userId)
-          .order("created_at", { ascending: false })
-          .limit(11);
-
-        if (nextCursor) {
-          savesQuery = savesQuery.lt("created_at", nextCursor);
-        }
-
-        const { data: savesData, error: savesError } = await savesQuery;
-        if (savesError) throw savesError;
-
-        const saves = savesData || [];
-        const pageHasMore = saves.length > 10;
-        const pageSaves = pageHasMore ? saves.slice(0, 10) : saves;
-        const causeIds = pageSaves.map((s) => s.cause_id);
-
-        if (causeIds.length === 0) {
-          if (!nextCursor) setCauses([]);
-          setHasMore(false);
-          setCursor(null);
-          return;
-        }
-
-        const { data: rawCauses, error: causesError } = await supabase
-          .from("causes")
-          .select(`
-            id,
-            title,
-            category,
-            description,
-            status,
-            city,
-            country_code,
-            published_at,
-            closed_at,
-            finalized_at,
-            goal_amount,
-            raised_reported,
-            currency,
-            comments_count,
-            saves_count,
-            created_at,
-            author:profiles!causes_author_id_fkey(
-              id,
-              full_name,
-              username,
-              avatar_url
-            ),
-            media:cause_media(
-              id,
-              storage_path,
-              bucket,
-              kind,
-              phase,
-              position,
-              width,
-              height
-            ),
-            results:cause_results(
-              summary,
-              amount_received,
-              currency
-            )
-          `)
-          .in("id", causeIds);
-
-        if (causesError) throw causesError;
-
-        const causesMap = new Map((rawCauses || []).map((c) => [c.id, c]));
-
-        // Keep the exact order of the saves
-        const mapped: CauseCardProps[] = pageSaves
-          .map((s) => causesMap.get(s.cause_id))
-          .filter(Boolean)
-          .map((c: any) => {
-            const author = c.author || {
-              id: "unknown",
-              full_name: "Usuario",
-              username: "usuario",
-              avatar_url: null,
-            };
-
-            const media: CauseMediaItem[] = (c.media || [])
-              .filter((m: any) => m.phase === "causa")
-              .sort((a: any, b: any) => a.position - b.position)
-              .map((m: any) => ({
-                id: m.id,
-                storage_path: m.storage_path,
-                kind: m.kind,
-                position: m.position,
-                width: m.width,
-                height: m.height,
-              }));
-
-            const results = Array.isArray(c.results) ? c.results[0] : c.results;
-
-            return {
-              id: c.id,
-              title: c.title || "Causa solidaria",
-              category: c.category || "otra",
-              description: c.description || "",
-              status: c.status,
-              city: c.city,
-              country_code: c.country_code,
-              published_at: c.published_at,
-              closed_at: c.closed_at,
-              finalized_at: c.finalized_at,
-              goal_amount: c.goal_amount,
-              raised_reported: c.raised_reported,
-              currency: c.currency || "USD",
-              comments_count: c.comments_count || 0,
-              saves_count: c.saves_count || 0,
-              author: {
-                id: author.id,
-                full_name: author.full_name || "Usuario",
-                username: author.username || "usuario",
-                avatar_url: author.avatar_url,
-              },
-              media,
-              resultsSummary: results?.summary || null,
-              resultsAmountReceived: results?.amount_received || null,
-              isSaved: true,
-            };
-          });
-
-        if (nextCursor) {
-          setCauses((prev) => [...prev, ...mapped]);
-        } else {
-          setCauses(mapped);
-        }
-
-        setHasMore(pageHasMore);
-        if (pageSaves.length > 0) {
-          setCursor(pageSaves[pageSaves.length - 1].created_at);
-        } else {
-          setCursor(null);
-        }
-      } catch (err) {
-        console.error("Error loading saved causes:", err);
-        setFetchError(true);
-      } finally {
-        clearTimeout(timeout);
-        setLoading(false);
-        setLoadingMore(false);
-      }
-    },
-    [supabase]
-  );
-
-  useEffect(() => {
-    if (!userLoading && user) {
-      fetchSavedCauses(user.id);
-    } else if (!userLoading && !user) {
-      setLoading(false);
-    }
-  }, [userLoading, user, fetchSavedCauses]);
-
-  // Infinite scroll observer
-  useEffect(() => {
-    const observer = new IntersectionObserver(
-      (entries) => {
-        if (entries[0].isIntersecting && hasMore && !loadingMore && user && cursor) {
-          fetchSavedCauses(user.id, cursor);
-        }
-      },
-      { threshold: 0.1 }
+  if (savesError) {
+    return (
+      <CausasGuardadasClient
+        userId={user.id}
+        initialCauses={[]}
+        initialHasMore={false}
+        initialCursor={null}
+        initialError="No pudimos cargar las causas guardadas. Intenta recargar la página."
+      />
     );
+  }
 
-    const el = observerTarget.current;
-    if (el) observer.observe(el);
-    return () => {
-      if (el) observer.unobserve(el);
-    };
-  }, [hasMore, loadingMore, user, cursor, fetchSavedCauses]);
+  const saves = savesData || [];
+  const initialHasMore = saves.length > 10;
+  const pageSaves = initialHasMore ? saves.slice(0, 10) : saves;
+  const causeIds = pageSaves.map((s) => s.cause_id);
 
-  const handleSaveToggle = (causeId: string, currentlySaved: boolean) => {
-    if (currentlySaved) {
-      // User removed from saved
-      setCauses((prev) => prev.filter((c) => c.id !== causeId));
-    }
-  };
+  let initialCauses: CauseCardProps[] = [];
+
+  if (causeIds.length > 0) {
+    const { data: rawCauses } = await supabase
+      .from("causes")
+      .select(`
+        id,
+        title,
+        category,
+        description,
+        status,
+        city,
+        country_code,
+        published_at,
+        closed_at,
+        finalized_at,
+        goal_amount,
+        raised_reported,
+        currency,
+        comments_count,
+        saves_count,
+        created_at,
+        author:profiles!causes_author_id_fkey(
+          id,
+          full_name,
+          username,
+          avatar_url
+        ),
+        media:cause_media(
+          id,
+          storage_path,
+          bucket,
+          kind,
+          phase,
+          position,
+          width,
+          height
+        ),
+        results:cause_results(
+          summary,
+          amount_received,
+          currency
+        )
+      `)
+      .in("id", causeIds);
+
+    const causesMap = new Map((rawCauses || []).map((c) => [c.id, c]));
+
+    initialCauses = pageSaves
+      .map((s) => causesMap.get(s.cause_id))
+      .filter(Boolean)
+      .map((c: any) => {
+        const author = c.author || {
+          id: "unknown",
+          full_name: "Usuario",
+          username: "usuario",
+          avatar_url: null,
+        };
+
+        const media: CauseMediaItem[] = (c.media || [])
+          .filter((m: any) => m.phase === "causa")
+          .sort((a: any, b: any) => a.position - b.position)
+          .map((m: any) => ({
+            id: m.id,
+            storage_path: m.storage_path,
+            kind: m.kind,
+            position: m.position,
+            width: m.width,
+            height: m.height,
+          }));
+
+        const results = Array.isArray(c.results) ? c.results[0] : c.results;
+
+        return {
+          id: c.id,
+          title: c.title || "Causa solidaria",
+          category: c.category || "otra",
+          description: c.description || "",
+          status: c.status,
+          city: c.city,
+          country_code: c.country_code,
+          published_at: c.published_at,
+          closed_at: c.closed_at,
+          finalized_at: c.finalized_at,
+          goal_amount: c.goal_amount,
+          raised_reported: c.raised_reported,
+          currency: c.currency || "USD",
+          comments_count: c.comments_count || 0,
+          saves_count: c.saves_count || 0,
+          author: {
+            id: author.id,
+            full_name: author.full_name || "Usuario",
+            username: author.username || "usuario",
+            avatar_url: author.avatar_url,
+          },
+          media,
+          resultsSummary: results?.summary || null,
+          resultsAmountReceived: results?.amount_received || null,
+          isSaved: true,
+        };
+      });
+  }
+
+  const initialCursor = pageSaves.length > 0 ? pageSaves[pageSaves.length - 1].created_at : null;
 
   return (
-    <div className="space-y-6">
-      {/* Header */}
-      <div>
-        <h1 className="text-2xl font-bold tracking-tight text-[var(--ink)]">Causas guardadas</h1>
-        <p className="text-sm text-[var(--ink-2)] mt-1">
-          Causas que guardaste para darles seguimiento o apoyar más adelante.
-        </p>
-      </div>
-
-      {/* Content */}
-      {loading ? (
-        <div className="py-16 text-center text-sm text-[var(--ink-3)] flex items-center justify-center gap-2">
-          <IconoCargando className="animate-spin text-[var(--accent)]" size={20} />
-          <span>Cargando causas guardadas...</span>
-        </div>
-      ) : fetchError ? (
-        <div className="py-16 px-6 text-center rounded-2xl border border-[var(--line)] bg-[var(--surface-solid)]/40 backdrop-blur-md space-y-3">
-          <p className="text-sm font-semibold text-[var(--ink)]">No pudimos cargar esta sección</p>
-          <button
-            type="button"
-            onClick={() => {
-              setFetchError(false);
-              if (user) fetchSavedCauses(user.id);
-            }}
-            className="px-4 py-2 text-xs font-semibold rounded-xl bg-[var(--cta)] hover:bg-[var(--accent)] text-white transition-all cursor-pointer"
-          >
-            Reintentar
-          </button>
-        </div>
-      ) : causes.length === 0 ? (
-        <div className="py-16 px-6 text-center rounded-2xl border border-[var(--line)] bg-[var(--surface-solid)]/40 backdrop-blur-md">
-          <div className="w-14 h-14 mx-auto rounded-full bg-[var(--track)] flex items-center justify-center text-[var(--accent)] mb-4">
-            <IconoGuardar size={26} />
-          </div>
-          <h3 className="text-base font-semibold text-[var(--ink)] mb-1">
-            Aún no tienes causas guardadas
-          </h3>
-          <p className="text-xs text-[var(--ink-3)] max-w-sm mx-auto mb-6">
-            Cuando encuentres causas que quieras apoyar o seguir de cerca, toca el ícono de guardar para tenerlas aquí reunidas.
-          </p>
-          <Link
-            href="/"
-            className="inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-[var(--cta)] hover:bg-[var(--cta-hover)] text-white text-xs font-semibold shadow-md transition-all"
-          >
-            <span>Explorar causas</span>
-            <IconoFlechaDerecha size={14} />
-          </Link>
-        </div>
-      ) : (
-        <div className="space-y-4">
-          {causes.map((cause) => (
-            <CauseCard
-              key={cause.id}
-              {...cause}
-              onSaveToggle={handleSaveToggle}
-            />
-          ))}
-
-          {/* Infinite scroll loader */}
-          <div ref={observerTarget} className="py-4 text-center">
-            {loadingMore && (
-              <div className="flex items-center justify-center gap-2 text-xs text-[var(--ink-3)]">
-                <IconoCargando className="animate-spin text-[var(--accent)]" size={16} />
-                <span>Cargando más guardadas...</span>
-              </div>
-            )}
-          </div>
-        </div>
-      )}
-    </div>
+    <CausasGuardadasClient
+      userId={user.id}
+      initialCauses={initialCauses}
+      initialHasMore={initialHasMore}
+      initialCursor={initialCursor}
+      initialError={null}
+    />
   );
 }
