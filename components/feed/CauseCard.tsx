@@ -142,6 +142,14 @@ export function CauseCard({
   const [isExpanded, setIsExpanded] = useState(false);
   const [saved, setSaved] = useState(isSaved);
   const [following, setFollowing] = useState(isFollowing);
+
+  useEffect(() => {
+    setFollowing(isFollowing);
+  }, [isFollowing]);
+
+  useEffect(() => {
+    setSaved(isSaved);
+  }, [isSaved]);
   const [copiedLink, setCopiedLink] = useState(false);
   const [showMenu, setShowMenu] = useState(false);
   const [imageErrorMap, setImageErrorMap] = useState<Record<number, boolean>>({});

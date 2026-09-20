@@ -73,10 +73,10 @@ export default async function UserProfilePage(props: UserProfilePageProps) {
   if (user && !isOwner) {
     const { data: followRow } = await supabase
       .from("follows")
-      .select("id")
+      .select("follower_id")
       .eq("follower_id", user.id)
       .eq("following_id", profile.id)
-      .single();
+      .maybeSingle();
     isFollowing = Boolean(followRow);
   }
 

@@ -59,6 +59,10 @@ export function UserProfileView({
   const [followersCount, setFollowersCount] = useState(profile.followers_count);
   const [causesList, setCausesList] = useState(initialCauses);
 
+  React.useEffect(() => {
+    setFollowing(initialFollowing);
+  }, [initialFollowing]);
+
   const publishedCauses = causesList.filter((c) => c.status !== "borrador");
   const draftCauses = causesList.filter((c) => c.status === "borrador");
 
@@ -275,6 +279,8 @@ export function UserProfileView({
                   resultsMedia={resultsMedia}
                   resultsSummary={c.results?.summary || null}
                   isOwner={isOwner}
+                  isFollowing={following}
+                  onFollowToggle={handleToggleFollow}
                 />
               );
             })

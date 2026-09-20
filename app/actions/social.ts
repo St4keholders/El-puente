@@ -28,9 +28,16 @@ export async function toggleFollowAction(
     // Check existing follow
     const { data: existing } = await supabase
       .from("follows")
-      .select("id")
+      .select("follower_id")
       .eq("follower_id", user.id)
       .eq("following_id", targetUserId)
+      .maybeSingle();
+
+    // Fetch target user username for accurate path revalidation
+    const { data: targetProf } = await supabase
+      .from("profiles")
+      .select("username")
+      .eq("id", targetUserId)
       .maybeSingle();
 
     if (existing) {
@@ -42,8 +49,12 @@ export async function toggleFollowAction(
         .eq("following_id", targetUserId);
 
       if (delErr) throw delErr;
-      revalidatePath("/explorar");
+      if (targetProf?.username) {
+        revalidatePath(`/u/${targetProf.username}`);
+      }
       revalidatePath(`/u/${targetUserId}`);
+      revalidatePath("/explorar");
+      revalidatePath("/");
       return { success: true, isFollowing: false };
     } else {
       // Follow
@@ -53,8 +64,12 @@ export async function toggleFollowAction(
       });
 
       if (insErr) throw insErr;
-      revalidatePath("/explorar");
+      if (targetProf?.username) {
+        revalidatePath(`/u/${targetProf.username}`);
+      }
       revalidatePath(`/u/${targetUserId}`);
+      revalidatePath("/explorar");
+      revalidatePath("/");
       return { success: true, isFollowing: true };
     }
   } catch (err: any) {
