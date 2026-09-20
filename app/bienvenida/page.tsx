@@ -114,9 +114,18 @@ function BienvenidaContent() {
         const supabase = createClient();
         const {
           data: { user: currentUser },
+          error: userErr,
         } = await supabase.auth.getUser();
 
-        if (!currentUser) {
+        if (userErr || !currentUser) {
+          if (
+            userErr?.message?.includes("claim in JWT") ||
+            userErr?.status === 403 ||
+            userErr?.status === 401
+          ) {
+            await supabase.auth.signOut().catch(() => {});
+            await signOutAction().catch(() => {});
+          }
           router.replace(`/entrar?next=${encodeURIComponent(next)}`);
           return;
         }
@@ -128,7 +137,7 @@ function BienvenidaContent() {
           .from("profiles")
           .select("onboarding_completed_at, full_name, username, avatar_url, country_code, city")
           .eq("id", currentUser.id)
-          .single();
+          .maybeSingle();
 
         if (profile?.onboarding_completed_at) {
           await setOnboardingCompletedCookie();
@@ -138,7 +147,7 @@ function BienvenidaContent() {
         }
 
         const meta = currentUser.user_metadata || {};
-        const initialName = meta.full_name || meta.name || profile?.full_name || "";
+        const initialName = profile?.full_name || meta.full_name || meta.name || currentUser.email?.split("@")[0] || "";
         setFullName(initialName);
 
         const initialAvatar =
@@ -157,19 +166,24 @@ function BienvenidaContent() {
         let candidate = baseUser;
         let found = false;
 
-        for (let i = 0; i < 5; i++) {
-          const { data: isAvail } = await supabase.rpc("username_available", {
-            p_username: candidate,
-          });
-          if (isAvail) {
-            found = true;
-            break;
+        try {
+          for (let i = 0; i < 5; i++) {
+            const { data: isAvail } = await supabase.rpc("username_available", {
+              p_username: candidate,
+            });
+            if (isAvail) {
+              found = true;
+              break;
+            }
+            candidate = `${baseUser}_${Math.floor(10 + Math.random() * 90)}`;
           }
-          candidate = `${baseUser}_${Math.floor(10 + Math.random() * 90)}`;
+        } catch {
+          // Ignorar fallo de red puntual
         }
 
         setUsername(candidate);
-        setUsernameStatus(found ? "available" : "checking");
+        // NUNCA dejar en "checking" para que el usuario no se quede bloqueado
+        setUsernameStatus(found ? "available" : "available");
       } catch (e) {
         console.error("Error loading user in bienvenida:", e);
       } finally {
@@ -199,11 +213,19 @@ function BienvenidaContent() {
     setUsernameStatus("checking");
     clearTimeout(debounceTimerRef.current);
     debounceTimerRef.current = setTimeout(async () => {
-      const supabase = createClient();
-      const { data: isAvail } = await supabase.rpc("username_available", {
-        p_username: trimmed,
-      });
-      setUsernameStatus(isAvail ? "available" : "taken");
+      try {
+        const supabase = createClient();
+        const { data: isAvail, error } = await supabase.rpc("username_available", {
+          p_username: trimmed,
+        });
+        if (error) {
+          setUsernameStatus("available");
+        } else {
+          setUsernameStatus(isAvail ? "available" : "taken");
+        }
+      } catch {
+        setUsernameStatus("available");
+      }
     }, 400);
   };
 
@@ -323,6 +345,11 @@ function BienvenidaContent() {
 
     setSubmitting(true);
 
+    const submitTimeout = setTimeout(() => {
+      setSubmitting(false);
+      setErrorMsg("La operación tardó demasiado. Por favor intenta de nuevo.");
+    }, 12000);
+
     try {
       const supabase = createClient();
 
@@ -335,6 +362,7 @@ function BienvenidaContent() {
       });
 
       if (rpcError) {
+        clearTimeout(submitTimeout);
         if (rpcError.message.includes("USUARIO_EN_USO")) {
           setErrorMsg("Ese usuario ya lo tomó otra persona. Prueba con otro.");
         } else if (rpcError.message.includes("USUARIO_INVALIDO")) {
@@ -343,6 +371,17 @@ function BienvenidaContent() {
           setErrorMsg("Revisa el número, parece incompleto.");
         } else if (rpcError.message.includes("REG_TERMINOS")) {
           setErrorMsg("Acepta los términos para continuar.");
+        } else if (
+          rpcError.message.includes("claim in JWT") ||
+          rpcError.message.includes("JWT") ||
+          (rpcError as any).status === 403 ||
+          (rpcError as any).code === "42501"
+        ) {
+          // Sesión huérfana de cuenta recreada: limpiar cookies y enviar a entrar
+          await supabase.auth.signOut().catch(() => {});
+          await signOutAction().catch(() => {});
+          window.location.href = `/entrar?next=${encodeURIComponent(next)}`;
+          return;
         } else {
           setErrorMsg("No pudimos completar tu registro: " + rpcError.message);
         }
@@ -406,13 +445,17 @@ function BienvenidaContent() {
 
       // 3. Marcar cookie de bienvenida completada
       await setOnboardingCompletedCookie();
+      clearTimeout(submitTimeout);
 
       const targetUrl = (!next || next === "/bienvenida") ? "/" : next;
       window.location.href = targetUrl;
     } catch (err: any) {
+      clearTimeout(submitTimeout);
       console.error("Error completing onboarding:", err);
       setErrorMsg("Ocurrió un error inesperado al guardar. Intenta de nuevo.");
       setSubmitting(false);
+    } finally {
+      clearTimeout(submitTimeout);
     }
   };
 

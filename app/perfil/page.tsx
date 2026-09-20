@@ -76,9 +76,43 @@ export default function MisDatosPage() {
       const timeout = setTimeout(() => {
         setLoadError("No pudimos cargar tus datos. Comprueba tu conexión.");
         setLoading(false);
-      }, 10000);
+      }, 6000);
 
       try {
+        let currentProfile = profile;
+
+        // Si el perfil aún no está en memoria, consultarlo directamente
+        if (!currentProfile) {
+          const { data: directProfile } = await supabase
+            .from("profiles")
+            .select("*")
+            .eq("id", user.id)
+            .maybeSingle();
+          currentProfile = directProfile;
+        }
+
+        // Si aún no existe la fila de perfil en la base de datos, auto-sanarla
+        if (!currentProfile) {
+          const meta = user.user_metadata || {};
+          const fName = meta.full_name || meta.name || user.email?.split("@")[0] || "Usuario";
+          const uName = `usuario_${user.id.substring(0, 6)}`;
+          try {
+            await supabase.from("profiles").upsert({
+              id: user.id,
+              full_name: fName,
+              username: uName,
+              avatar_url: meta.avatar_url || meta.picture || null,
+            });
+          } catch {}
+
+          const { data: healedProf } = await supabase
+            .from("profiles")
+            .select("*")
+            .eq("id", user.id)
+            .maybeSingle();
+          currentProfile = healedProf;
+        }
+
         const { data: privData, error: privErr } = await supabase
           .from("profile_private")
           .select("phone")
@@ -86,9 +120,11 @@ export default function MisDatosPage() {
           .maybeSingle();
 
         let priv = privData;
-        // If the row doesn't exist, create it on the fly
+        // Si no existe la fila privada, crearla
         if (!priv && !privErr) {
-          await supabase.from("profile_private").upsert({ id: user.id });
+          try {
+            await supabase.from("profile_private").upsert({ id: user.id });
+          } catch {}
           priv = { phone: null };
         }
 
@@ -108,12 +144,12 @@ export default function MisDatosPage() {
         }
 
         const initial = {
-          avatar_url: profile?.avatar_url || "",
-          full_name: profile?.full_name || "",
-          username: profile?.username || "",
-          bio: profile?.bio || "",
-          country_code: profile?.country_code || "",
-          city: profile?.city || "",
+          avatar_url: currentProfile?.avatar_url || "",
+          full_name: currentProfile?.full_name || "",
+          username: currentProfile?.username || "",
+          bio: currentProfile?.bio || "",
+          country_code: currentProfile?.country_code || "",
+          city: currentProfile?.city || "",
           phone_country: country,
           phone_raw: numberPart,
         };
@@ -137,13 +173,7 @@ export default function MisDatosPage() {
       }
     }
 
-    if (profile) {
-      loadPrivateData();
-    } else if (!userLoading) {
-      // profile is null even though auth resolved — show error
-      setLoadError("No se encontró tu perfil. Intenta cerrar sesión y volver a entrar.");
-      setLoading(false);
-    }
+    loadPrivateData();
   }, [userLoading, user, profile]);
 
 
