@@ -1,6 +1,5 @@
 import { Metadata } from "next";
 import { notFound } from "next/navigation";
-import Link from "next/link";
 import { createClient } from "@/lib/supabase/server";
 import { CauseDetailView } from "@/components/cause/CauseDetailView";
 import mundoData from "@/lib/geo/mundo.json";
@@ -34,9 +33,7 @@ export async function generateMetadata(props: CausePageProps): Promise<Metadata>
     .single();
 
   if (!cause) {
-    return {
-      title: "Causa no encontrada | Puente",
-    };
+    return { title: "Causa no encontrada | Puente" };
   }
 
   const firstMedia = (cause.media || [])
@@ -78,7 +75,7 @@ export default async function CauseDetailPage(props: CausePageProps) {
     data: { user },
   } = await supabase.auth.getUser();
 
-  // Fetch cause with author and media
+  // Fetch cause with author, media and new schema fields
   const { data: cause, error } = await supabase
     .from("causes")
     .select(
@@ -102,6 +99,10 @@ export default async function CauseDetailPage(props: CausePageProps) {
       created_at,
       closing_note,
       author_id,
+      collection_type,
+      supplies_instructions,
+      is_example,
+      first_support_confirmed_at,
       author:profiles!causes_author_id_fkey(
         id,
         full_name,
@@ -129,12 +130,12 @@ export default async function CauseDetailPage(props: CausePageProps) {
     notFound();
   }
 
-  // If status is borrador and current user is not author, 404
+  // Borradores solo visibles al autor
   if (cause.status === "borrador" && user?.id !== cause.author_id) {
     notFound();
   }
 
-  // Fetch donation methods (only visible if logged in due to RLS)
+  // Métodos de donación (RLS: solo con sesión)
   let donationMethods: any[] = [];
   if (user) {
     const { data: methods } = await supabase
@@ -142,11 +143,18 @@ export default async function CauseDetailPage(props: CausePageProps) {
       .select("*")
       .eq("cause_id", cause.id)
       .order("position", { ascending: true });
-
     donationMethods = methods || [];
   }
 
-  // Fetch results if finalized
+  // Insumos (visibles sin auth para causas activas por RLS)
+  const { data: suppliesData } = await supabase
+    .from("cause_supplies")
+    .select("*")
+    .eq("cause_id", cause.id)
+    .order("position", { ascending: true });
+  const supplies = suppliesData || [];
+
+  // Resultados si finalizada
   let resultsData: any = null;
   if (cause.status === "finalizada") {
     const { data: results } = await supabase
@@ -154,40 +162,45 @@ export default async function CauseDetailPage(props: CausePageProps) {
       .select("*")
       .eq("cause_id", cause.id)
       .single();
-
     resultsData = results;
   }
 
-  // Check if saved by current user
+  // Estado de guardado y seguimiento del usuario actual
   let isSaved = false;
   let isFollowing = false;
   if (user) {
-    const { data: saveRow } = await supabase
-      .from("saves")
-      .select("id")
-      .eq("user_id", user.id)
-      .eq("cause_id", cause.id)
-      .single();
-    isSaved = Boolean(saveRow);
-
-    const { data: followRow } = await supabase
-      .from("follows")
-      .select("id")
-      .eq("follower_id", user.id)
-      .eq("following_id", cause.author_id)
-      .single();
-    isFollowing = Boolean(followRow);
+    const [saveRes, followRes] = await Promise.all([
+      supabase
+        .from("saves")
+        .select("cause_id")
+        .eq("user_id", user.id)
+        .eq("cause_id", cause.id)
+        .maybeSingle(),
+      supabase
+        .from("follows")
+        .select("follower_id")
+        .eq("follower_id", user.id)
+        .eq("following_id", cause.author_id)
+        .maybeSingle(),
+    ]);
+    isSaved = Boolean(saveRes.data);
+    isFollowing = Boolean(followRes.data);
   }
 
   const countries = ((mundoData as any).countries || []) as Array<{ id: string; n: string }>;
   const countryObj = countries.find((c) => c.id === cause.country_code);
 
   return (
-    <main className="min-h-screen pt-4 pb-24">
+    // padding-top: --alto-header + 24px para que el header flotante no tape el título
+    <main
+      className="min-h-screen pb-24 relative z-[2]"
+      style={{ paddingTop: "calc(var(--alto-header) + 24px)" }}
+    >
       <CauseDetailView
         cause={cause as any}
         countryName={countryObj?.n}
         donationMethods={donationMethods}
+        supplies={supplies}
         results={resultsData}
         isSaved={isSaved}
         isFollowing={isFollowing}

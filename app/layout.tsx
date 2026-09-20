@@ -5,6 +5,7 @@ import { Header } from "@/components/layout/Header";
 import { BottomNav } from "@/components/layout/BottomNav";
 import { Footer } from "@/components/layout/Footer";
 import { QueryProvider } from "@/components/providers/QueryProvider";
+import { FondoGlobal } from "@/components/fondo/FondoGlobal";
 import { siteConfig } from "@/lib/config/site";
 
 const instrumentSans = Instrument_Sans({
@@ -49,6 +50,9 @@ export default function RootLayout({
     <html lang="es" suppressHydrationWarning>
       <body className={`${instrumentSans.variable} font-sans antialiased selection:bg-[var(--accent)] selection:text-white`}>
         <QueryProvider>
+          {/* Global star background — hidden on home page by FondoGlobal */}
+          <FondoGlobal />
+
           {/* Ambient background glow */}
           <div className="ambient-background" aria-hidden="true">
             <div className="ambient-blob-1" />

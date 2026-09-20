@@ -28,11 +28,12 @@ const KIND_LABELS: Record<MethodKind, string> = {
 };
 
 export default function MetodosPagoPage() {
-  const { user } = useUser();
+  const { user, loading: userLoading } = useUser();
   const supabase = createClient();
 
   const [methods, setMethods] = useState<ProfileDonationMethod[]>([]);
   const [loading, setLoading] = useState(true);
+  const [fetchError, setFetchError] = useState(false);
   const [visibleValues, setVisibleValues] = useState<Record<string, boolean>>({});
 
   // Modal de Crear / Editar
@@ -56,21 +57,34 @@ export default function MetodosPagoPage() {
 
   const loadMethods = async () => {
     if (!user) return;
-    const { data, error } = await supabase
-      .from("profile_donation_methods")
-      .select("*")
-      .eq("owner_id", user.id)
-      .order("position", { ascending: true });
+    try {
+      const { data, error } = await supabase
+        .from("profile_donation_methods")
+        .select("*")
+        .eq("owner_id", user.id)
+        .order("position", { ascending: true });
 
-    if (!error && data) {
-      setMethods(data);
+      if (error) {
+        console.error("Error loading profile donation methods:", error);
+        setFetchError(true);
+      } else if (data) {
+        setMethods(data);
+      }
+    } catch (err) {
+      console.error("Error loading methods:", err);
+      setFetchError(true);
+    } finally {
+      setLoading(false);
     }
-    setLoading(false);
   };
 
   useEffect(() => {
-    loadMethods();
-  }, [user]);
+    if (!userLoading && user) {
+      loadMethods();
+    } else if (!userLoading && !user) {
+      setLoading(false);
+    }
+  }, [user, userLoading]);
 
   const toggleVisibility = (id: string) => {
     setVisibleValues((prev) => ({ ...prev, [id]: !prev[id] }));
@@ -241,6 +255,25 @@ export default function MetodosPagoPage() {
     return (
       <div className="flex min-h-[400px] items-center justify-center text-sm text-[var(--ink-2)]">
         Cargando métodos de pago...
+      </div>
+    );
+  }
+
+  if (fetchError) {
+    return (
+      <div className="p-12 rounded-3xl border border-[var(--line)] bg-[var(--surface-solid)]/40 backdrop-blur-md flex flex-col items-center justify-center text-center space-y-3">
+        <p className="text-sm font-semibold text-[var(--ink)]">No pudimos cargar esta sección</p>
+        <button
+          type="button"
+          onClick={() => {
+            setFetchError(false);
+            setLoading(true);
+            loadMethods();
+          }}
+          className="px-4 py-2 text-xs font-semibold rounded-xl bg-[var(--cta)] hover:bg-[var(--accent)] text-white transition-all cursor-pointer"
+        >
+          Reintentar
+        </button>
       </div>
     );
   }

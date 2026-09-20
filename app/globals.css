@@ -62,6 +62,8 @@
   --glass-edge: rgba(10, 22, 51, 0.08);
   --glass-shadow: 0 18px 50px -24px rgba(10, 22, 51, 0.35);
   --glass-highlight: rgba(255, 255, 255, 0.55);
+  /* Header flotante: ~56px altura + 16px desde top + 24px separación = 96px */
+  --alto-header: 96px;
 }
 
 .fondo-constelacion { position: fixed; inset: 0; width: 100%; height: 100%; z-index: 0; pointer-events: none; }

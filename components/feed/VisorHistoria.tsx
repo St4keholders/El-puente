@@ -47,22 +47,6 @@ export function VisorHistoria({
     }
   }, [current, onStorySeen]);
 
-  // Trap focus accesibilidad
-  useEffect(() => {
-    closeButtonRef.current?.focus();
-    const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.key === "Escape") {
-        onClose();
-      } else if (e.key === "ArrowRight") {
-        goToNext();
-      } else if (e.key === "ArrowLeft") {
-        goToPrev();
-      }
-    };
-    window.addEventListener("keydown", handleKeyDown);
-    return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [currentIndex]);
-
   const goToNext = useCallback(() => {
     setProgress(0);
     if (currentIndex < historias.length - 1) {
@@ -78,6 +62,22 @@ export function VisorHistoria({
       setCurrentIndex((i) => i - 1);
     }
   }, [currentIndex]);
+
+  // Trap focus accesibilidad
+  useEffect(() => {
+    closeButtonRef.current?.focus();
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === "Escape") {
+        onClose();
+      } else if (e.key === "ArrowRight") {
+        goToNext();
+      } else if (e.key === "ArrowLeft") {
+        goToPrev();
+      }
+    };
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [goToNext, goToPrev, onClose]);
 
   // Autoplay con temporizador
   useEffect(() => {

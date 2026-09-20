@@ -62,6 +62,15 @@ export interface CauseCardProps {
   resultsSummary?: string | null;
   resultsMedia?: CauseMediaItem[];
   resultsAmountReceived?: number | null;
+  collection_type?: "dinero" | "insumos" | "ambas";
+  is_example?: boolean;
+  supplies?: Array<{
+    id: string;
+    name: string;
+    quantity_needed?: number | null;
+    quantity_received?: number | null;
+    position?: number;
+  }>;
   isSaved?: boolean;
   isFollowing?: boolean;
   isOwner?: boolean;
@@ -116,6 +125,9 @@ export function CauseCard({
   resultsSummary,
   resultsMedia = [],
   resultsAmountReceived,
+  collection_type = "dinero",
+  is_example = false,
+  supplies = [],
   isSaved = false,
   isFollowing = false,
   isOwner = false,
@@ -406,6 +418,11 @@ export function CauseCard({
                 <span className="px-2 py-0.5 rounded-md bg-[var(--track)] font-medium text-[var(--ink-2)]">
                   {CATEGORY_LABELS[category] || category}
                 </span>
+                {is_example && (
+                  <span className="px-2 py-0.5 rounded-md bg-amber-500/20 text-amber-400 font-bold text-xs">
+                    Ejemplo
+                  </span>
+                )}
                 <span>·</span>
                 {locationText && (
                   <>
@@ -469,24 +486,68 @@ export function CauseCard({
             {/* Fila 5 & 6: Estado/Progreso y Acciones */}
             <div className="pt-2 border-t border-[var(--line)]">
               {/* Progreso según variante */}
-              {status === "activa" && goal_amount && goal_amount > 0 && (
-                <div className="mb-3">
-                  <div className="flex items-center justify-between text-xs text-[var(--ink-3)] font-mono mb-1.5">
-                    <span>
-                      <strong className="text-[var(--ink)] font-semibold">
-                        ${(raised_reported || 0).toLocaleString()}
-                      </strong>{" "}
-                      reportados de ${goal_amount.toLocaleString()} {currency}
-                    </span>
-                    <span className="font-semibold text-[var(--ink)]">{progressPercent}%</span>
-                  </div>
-                  <div className="w-full h-1.5 rounded-full bg-[var(--track)] overflow-hidden">
-                    <div
-                      className="h-full rounded-full bg-gradient-to-r from-[var(--cta)] to-[var(--accent)] transition-all duration-500"
-                      style={{ width: `${progressPercent}%` }}
-                    />
-                  </div>
-                </div>
+              {status === "activa" && (
+                <>
+                  {/* Dinero (si es dinero o ambas) */}
+                  {(collection_type === "dinero" || collection_type === "ambas") &&
+                    goal_amount &&
+                    goal_amount > 0 && (
+                      <div className="mb-3">
+                        <div className="flex items-center justify-between text-xs text-[var(--ink-3)] font-mono mb-1.5">
+                          <span>
+                            <strong className="text-[var(--ink)] font-semibold">
+                              ${(raised_reported || 0).toLocaleString()}
+                            </strong>{" "}
+                            reportados de ${goal_amount.toLocaleString()} {currency}
+                          </span>
+                          <span className="font-semibold text-[var(--ink)]">{progressPercent}%</span>
+                        </div>
+                        <div
+                          role="progressbar"
+                          aria-valuenow={progressPercent}
+                          aria-valuemin={0}
+                          aria-valuemax={100}
+                          aria-label={`${progressPercent}% de la meta`}
+                          className="w-full h-1.5 rounded-full bg-[var(--track)] overflow-hidden"
+                        >
+                          <div
+                            className="h-full rounded-full bg-gradient-to-r from-[var(--cta)] to-[var(--accent)] transition-all duration-500"
+                            style={{ width: `${progressPercent}%` }}
+                          />
+                        </div>
+                      </div>
+                    )}
+
+                  {/* Insumos (si es insumos o ambas) */}
+                  {(collection_type === "insumos" || collection_type === "ambas") &&
+                    supplies.length > 0 && (
+                      <div className="mb-3 flex items-center justify-between text-xs text-[var(--ink-3)] font-mono py-1 px-2.5 rounded-lg bg-[var(--track)]">
+                        <span>
+                          <strong className="text-[var(--ink)] font-semibold">
+                            {
+                              supplies.filter(
+                                (s) =>
+                                  s.quantity_needed != null &&
+                                  s.quantity_needed > 0 &&
+                                  (s.quantity_received || 0) >= s.quantity_needed
+                              ).length
+                            }{" "}
+                            de {supplies.length} insumos completos
+                          </strong>
+                          {supplies.length > 0 && (
+                            <span className="ml-1 text-[var(--ink-2)]">
+                              (
+                              {supplies
+                                .slice(0, 2)
+                                .map((s) => s.name)
+                                .join(", ")}
+                              {supplies.length > 2 ? "…" : ""})
+                            </span>
+                          )}
+                        </span>
+                      </div>
+                    )}
+                </>
               )}
 
               {status === "cerrada" && (

@@ -1,11 +1,9 @@
 /**
  * Client-side media processing and validation
- * Strictly implements section 10.1 of PLAN-VERSION-DEFINITIVA.md:
- * - Max dimension 2000px
- * - WebP quality 0.82
- * - Strips EXIF metadata and GPS location via canvas re-encoding
- * - Video validation: max 50MB, max 90 seconds
+ * Strictly implements PLAN.md sections 7.2 and 7.3
  */
+
+export * from "@/lib/media/comprimir";
 
 export interface ProcessedImage {
   file: File;
@@ -25,8 +23,8 @@ export interface ValidatedVideo {
 
 export async function compressImageToWebP(
   file: File,
-  maxDimension = 2000,
-  quality = 0.82
+  maxDimension = 1600,
+  quality = 0.8
 ): Promise<ProcessedImage> {
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
@@ -37,7 +35,7 @@ export async function compressImageToWebP(
       img.onload = () => {
         let { width, height } = img;
 
-        // Maintain aspect ratio, max dimension 2000px
+        // Maintain aspect ratio, max dimension 1600px
         if (width > maxDimension || height > maxDimension) {
           if (width > height) {
             height = Math.round((height * maxDimension) / width);
@@ -90,12 +88,12 @@ export async function compressImageToWebP(
 
 export async function validateVideo(
   file: File,
-  maxSizeBytes = 50 * 1024 * 1024,
-  maxDurationSeconds = 90
+  maxSizeBytes = 25 * 1024 * 1024,
+  maxDurationSeconds = 60
 ): Promise<ValidatedVideo> {
   if (file.size > maxSizeBytes) {
     throw new Error(
-      `El video pesa ${(file.size / (1024 * 1024)).toFixed(1)} MB. El tamaño máximo permitido es 50 MB.`
+      `El video pesa ${(file.size / (1024 * 1024)).toFixed(1)} MB. El tamaño máximo permitido es 25 MB.`
     );
   }
 
@@ -113,7 +111,7 @@ export async function validateVideo(
         URL.revokeObjectURL(objectUrl);
         return reject(
           new Error(
-            `El video dura ${duration} segundos. La duración máxima permitida es 90 segundos (1m 30s).`
+            `El video dura ${duration} segundos. La duración máxima permitida es 60 segundos.`
           )
         );
       }

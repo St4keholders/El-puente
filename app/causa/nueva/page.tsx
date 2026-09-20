@@ -27,7 +27,8 @@ import {
 import { Glass } from "@/components/ui/Glass";
 import { useUser } from "@/lib/hooks/useUser";
 import { createClient } from "@/lib/supabase/client";
-import { compressImageToWebP, validateVideo } from "@/lib/utils/media";
+import { comprimirFotoCausa, validarVideo, generarPortadaVideo } from "@/lib/media/comprimir";
+import { getUserStorageUsage, MAX_USER_STORAGE_BYTES } from "@/lib/media";
 import { defaultGeocoder, GeocodedCity } from "@/lib/geo/geocoder";
 import mundoData from "@/lib/geo/mundo.json";
 import { CauseCard } from "@/components/feed/CauseCard";
@@ -36,6 +37,15 @@ import { parsePhoneNumberFromString, type CountryCode } from "libphonenumber-js"
 
 type CauseCategory = Database["public"]["Enums"]["cause_category"];
 type DonationMethodKind = Database["public"]["Enums"]["donation_method_kind"];
+
+export interface WizardSupplyItem {
+  id?: string;
+  name: string;
+  unit: string;
+  quantity_needed: number | "";
+  quantity_received: number;
+  position: number;
+}
 
 interface MediaUploadItem {
   id?: string;
@@ -128,6 +138,7 @@ function NuevaCausaContent() {
   const [currentStep, setCurrentStep] = useState(1);
   const [causeId, setCauseId] = useState<string | null>(null);
   const [initializing, setInitializing] = useState(true);
+  const [initError, setInitError] = useState<string | null>(null);
   const [autoSaving, setAutoSaving] = useState(false);
   const [publishError, setPublishError] = useState<{ message: string; step?: number } | null>(null);
   const [isPublishing, setIsPublishing] = useState(false);
@@ -154,7 +165,10 @@ function NuevaCausaContent() {
   const [citySuggestions, setCitySuggestions] = useState<GeocodedCity[]>([]);
   const [searchingCities, setSearchingCities] = useState(false);
 
-  // Step 4: Donation Methods
+  // Step 4: What do you need (Dinero, Insumos, Ambos)
+  const [collectionType, setCollectionType] = useState<"dinero" | "insumos" | "ambas">("dinero");
+  const [suppliesInstructions, setSuppliesInstructions] = useState("");
+  const [suppliesList, setSuppliesList] = useState<WizardSupplyItem[]>([]);
   const [donationMethods, setDonationMethods] = useState<DonationMethodItem[]>([]);
   const [profileMethods, setProfileMethods] = useState<ProfileDonationMethod[]>([]);
   const [saveInProfile, setSaveInProfile] = useState(true);
@@ -266,6 +280,28 @@ function NuevaCausaContent() {
           setGoalAmount(draft.goal_amount);
         }
         setCurrency(draft.currency || "USD");
+        setCollectionType(draft.collection_type || "dinero");
+        setSuppliesInstructions(draft.supplies_instructions || "");
+
+        // Load existing supplies for this draft
+        const { data: suppliesData } = await supabase
+          .from("cause_supplies")
+          .select("*")
+          .eq("cause_id", draft.id)
+          .order("position", { ascending: true });
+
+        if (suppliesData && suppliesData.length > 0) {
+          setSuppliesList(
+            suppliesData.map((s) => ({
+              id: s.id,
+              name: s.name,
+              unit: s.unit || "",
+              quantity_needed: s.quantity_needed ?? "",
+              quantity_received: s.quantity_received || 0,
+              position: s.position,
+            }))
+          );
+        }
 
         // Load existing media for this draft
         const { data: mediaItems } = await supabase
@@ -344,6 +380,17 @@ function NuevaCausaContent() {
         }
       } catch (err: any) {
         console.error("Error initializing draft:", err);
+        // If Supabase rejected the insert because the user isn't onboarded, redirect
+        const msg: string = err?.message || err?.code || "";
+        if (
+          msg.includes("is_onboarded") ||
+          msg.includes("bienvenida") ||
+          msg.includes("onboard")
+        ) {
+          router.push("/bienvenida?next=/causa/nueva");
+          return;
+        }
+        setInitError(err?.message || "No se pudo inicializar el borrador. Verifica tu conexión.");
       } finally {
         setInitializing(false);
       }
@@ -372,6 +419,8 @@ function NuevaCausaContent() {
             lng,
             goal_amount: hasGoal && typeof goalAmount === "number" ? goalAmount : null,
             currency,
+            collection_type: collectionType,
+            supplies_instructions: suppliesInstructions || null,
             updated_at: new Date().toISOString(),
           })
           .eq("id", causeId);
@@ -396,6 +445,8 @@ function NuevaCausaContent() {
     hasGoal,
     goalAmount,
     currency,
+    collectionType,
+    suppliesInstructions,
     initializing,
   ]);
 
@@ -452,9 +503,20 @@ function NuevaCausaContent() {
         alert("Máximo 10 imágenes permitidas.");
         continue;
       }
-      if (isVideo && currentVideos >= 2) {
-        alert("Máximo 2 videos permitidos.");
+      if (isVideo && currentVideos >= 1) {
+        alert("Máximo 1 video permitido por causa.");
         continue;
+      }
+
+      // Check 60 MB storage quota per user (PLAN.md 7.3)
+      try {
+        const currentBytes = await getUserStorageUsage(user.id);
+        if (currentBytes + file.size > MAX_USER_STORAGE_BYTES) {
+          alert("Llegaste al límite de archivos. Elimina algo para subir más.");
+          continue;
+        }
+      } catch {
+        // Non-blocking quota check failure
       }
 
       const tempId = crypto.randomUUID();
@@ -475,13 +537,34 @@ function NuevaCausaContent() {
 
       try {
         if (isVideo) {
-          const validated = await validateVideo(file);
+          const validated = await validarVideo(file);
           const ext = file.name.split(".").pop() || "mp4";
-          const storagePath = `${user.id}/${causeId}/${crypto.randomUUID()}.${ext}`;
+          const fileUuid = crypto.randomUUID();
+          const storagePath = `${user.id}/${causeId}/${fileUuid}.${ext}`;
+          const posterPath = `${user.id}/${causeId}/${fileUuid}_poster.webp`;
+
+          // Generate poster
+          let posterBytes = 0;
+          try {
+            const poster = await generarPortadaVideo(file);
+            posterBytes = poster.bytes;
+            await supabase.storage
+              .from("causas-imagenes")
+              .upload(posterPath, poster.blob, {
+                cacheControl: "31536000",
+                contentType: "image/webp",
+                upsert: false,
+              });
+          } catch (e) {
+            console.warn("Could not generate poster frame:", e);
+          }
 
           const { error: uploadErr } = await supabase.storage
             .from("causas-videos")
-            .upload(storagePath, validated.file);
+            .upload(storagePath, validated.file, {
+              cacheControl: "31536000",
+              upsert: false,
+            });
 
           if (uploadErr) throw uploadErr;
 
@@ -498,11 +581,18 @@ function NuevaCausaContent() {
               width: validated.width,
               height: validated.height,
               duration_seconds: validated.duration,
+              bytes: validated.bytes + posterBytes,
+              thumb_path: posterPath,
             })
             .select()
             .single();
 
-          if (dbErr) throw dbErr;
+          if (dbErr) {
+            // Cleanup on DB error
+            await supabase.storage.from("causas-videos").remove([storagePath]);
+            await supabase.storage.from("causas-imagenes").remove([posterPath]);
+            throw dbErr;
+          }
 
           setMediaList((prev) =>
             prev.map((m) =>
@@ -514,24 +604,41 @@ function NuevaCausaContent() {
                     position: nextPos,
                     width: validated.width,
                     height: validated.height,
-                    previewUrl: validated.previewUrl,
+                    previewUrl: m.previewUrl,
                     isUploading: false,
                   }
                 : m
             )
           );
         } else {
-          // Compress image to WebP and strip EXIF / GPS tags
-          const processed = await compressImageToWebP(file, 2000, 0.82);
-          const storagePath = `${user.id}/${causeId}/${crypto.randomUUID()}.webp`;
+          // Compress image to 1600px + 400px thumbnail WebP (PLAN.md 7.2)
+          const fileUuid = crypto.randomUUID();
+          const compressed = await comprimirFotoCausa(file);
+          const storagePath = `${user.id}/${causeId}/${fileUuid}.webp`;
+          const thumbPath = `${user.id}/${causeId}/${fileUuid}_400.webp`;
 
           const { error: uploadErr } = await supabase.storage
             .from("causas-imagenes")
-            .upload(storagePath, processed.blob, {
+            .upload(storagePath, compressed.fullBlob, {
+              cacheControl: "31536000",
               contentType: "image/webp",
+              upsert: false,
             });
 
           if (uploadErr) throw uploadErr;
+
+          // Upload thumbnail
+          const { error: thumbErr } = await supabase.storage
+            .from("causas-imagenes")
+            .upload(thumbPath, compressed.thumbBlob, {
+              cacheControl: "31536000",
+              contentType: "image/webp",
+              upsert: false,
+            });
+
+          if (thumbErr) {
+            console.warn("Error uploading thumbnail:", thumbErr);
+          }
 
           const { data: dbItem, error: dbErr } = await supabase
             .from("cause_media")
@@ -543,13 +650,18 @@ function NuevaCausaContent() {
               kind: "imagen",
               phase: "causa",
               position: nextPos,
-              width: processed.width,
-              height: processed.height,
+              width: compressed.width,
+              height: compressed.height,
+              bytes: compressed.bytes,
+              thumb_path: thumbPath,
             })
             .select()
             .single();
 
-          if (dbErr) throw dbErr;
+          if (dbErr) {
+            await supabase.storage.from("causas-imagenes").remove([storagePath, thumbPath]);
+            throw dbErr;
+          }
 
           setMediaList((prev) =>
             prev.map((m) =>
@@ -559,9 +671,9 @@ function NuevaCausaContent() {
                     storage_path: storagePath,
                     kind: "imagen",
                     position: nextPos,
-                    width: processed.width,
-                    height: processed.height,
-                    previewUrl: processed.previewUrl,
+                    width: compressed.width,
+                    height: compressed.height,
+                    previewUrl: compressed.previewUrl,
                     isUploading: false,
                   }
                 : m
@@ -814,6 +926,97 @@ function NuevaCausaContent() {
     }
   };
 
+  // Insumos helper actions
+  const handleAddSupply = () => {
+    if (suppliesList.length >= 12) {
+      alert("Puedes agregar un máximo de 12 insumos por causa.");
+      return;
+    }
+    setSuppliesList((prev) => [
+      ...prev,
+      {
+        name: "",
+        unit: "unidades",
+        quantity_needed: "",
+        quantity_received: 0,
+        position: prev.length,
+      },
+    ]);
+  };
+
+  const handleUpdateSupply = (
+    index: number,
+    field: keyof WizardSupplyItem,
+    val: any
+  ) => {
+    setSuppliesList((prev) => {
+      const next = [...prev];
+      next[index] = { ...next[index], [field]: val };
+      return next;
+    });
+  };
+
+  const handleMoveSupply = (index: number, direction: "up" | "down") => {
+    if (
+      (direction === "up" && index === 0) ||
+      (direction === "down" && index === suppliesList.length - 1)
+    ) {
+      return;
+    }
+    const targetIndex = direction === "up" ? index - 1 : index + 1;
+    setSuppliesList((prev) => {
+      const next = [...prev];
+      const temp = next[index];
+      next[index] = next[targetIndex];
+      next[targetIndex] = temp;
+      return next.map((item, idx) => ({ ...item, position: idx }));
+    });
+  };
+
+  const handleDeleteSupply = async (index: number) => {
+    const item = suppliesList[index];
+    if (item.id) {
+      await supabase.from("cause_supplies").delete().eq("id", item.id);
+    }
+    setSuppliesList((prev) =>
+      prev.filter((_, idx) => idx !== index).map((s, idx) => ({ ...s, position: idx }))
+    );
+  };
+
+  const handleSaveSuppliesToDb = async () => {
+    if (!causeId || !user) return;
+    for (const [idx, item] of suppliesList.entries()) {
+      if (!item.name.trim()) continue;
+      if (item.id) {
+        await supabase
+          .from("cause_supplies")
+          .update({
+            name: item.name.trim(),
+            unit: item.unit.trim() || null,
+            quantity_needed: typeof item.quantity_needed === "number" ? item.quantity_needed : null,
+            position: idx,
+          })
+          .eq("id", item.id);
+      } else {
+        const { data: created } = await supabase
+          .from("cause_supplies")
+          .insert({
+            cause_id: causeId,
+            owner_id: user.id,
+            name: item.name.trim(),
+            unit: item.unit.trim() || null,
+            quantity_needed: typeof item.quantity_needed === "number" ? item.quantity_needed : null,
+            position: idx,
+          })
+          .select()
+          .single();
+        if (created) {
+          item.id = created.id;
+        }
+      }
+    }
+  };
+
   // Step 5: Publish Cause Action
   const handlePublish = async () => {
     if (!causeId || !user) return;
@@ -851,11 +1054,18 @@ function NuevaCausaContent() {
     setIsPublishing(true);
 
     try {
+      // Sync supplies before publishing if cause accepts supplies
+      if (collectionType === "insumos" || collectionType === "ambas") {
+        await handleSaveSuppliesToDb();
+      }
+
       // Direct Postgres status update to trigger check_cause_activation
       const { error } = await supabase
         .from("causes")
         .update({
           status: "activa",
+          collection_type: collectionType,
+          supplies_instructions: suppliesInstructions.trim() || null,
           published_at: new Date().toISOString(),
         })
         .eq("id", causeId);
@@ -898,6 +1108,18 @@ function NuevaCausaContent() {
             step: 4,
           });
           setCurrentStep(4);
+        } else if (msg.includes("REQ_INSUMOS")) {
+          setPublishError({
+            message: "Agrega al menos un insumo que necesites.",
+            step: 4,
+          });
+          setCurrentStep(4);
+        } else if (msg.includes("REQ_ENTREGA")) {
+          setPublishError({
+            message: "Explica cómo pueden hacerte llegar los insumos.",
+            step: 4,
+          });
+          setCurrentStep(4);
         } else if (msg.includes("REQ_PERFIL")) {
           setPublishError({
             message: "Completa tu nombre en tu perfil antes de publicar.",
@@ -928,12 +1150,36 @@ function NuevaCausaContent() {
     );
   }
 
+  if (initError) {
+    return (
+      <div className="min-h-[80vh] flex flex-col items-center justify-center gap-4 px-4">
+        <IconoAlerta size={32} className="text-red-500" />
+        <p className="text-text-secondary text-sm text-center max-w-sm">{initError}</p>
+        <button
+          onClick={() => { setInitError(null); setInitializing(true); }}
+          className="px-5 py-2.5 rounded-xl bg-accent text-white text-sm font-semibold hover:bg-accent/90"
+        >
+          Reintentar
+        </button>
+      </div>
+    );
+  }
+
   // Pre-calculate step readiness for visual feedback
   const hasMinImages = mediaList.filter((m) => m.kind === "imagen").length >= 2;
   const isTitleValid = title.length >= 10 && title.length <= 90;
   const isDescValid = description.length >= 80 && description.length <= 5000;
   const isLocationValid = Boolean(countryCode && city && lat && lng);
   const hasDonationMethod = donationMethods.length >= 1;
+  const hasSupplies = suppliesList.length >= 1 && suppliesList.some((s) => s.name.trim().length >= 2);
+  const hasSuppliesInstructions =
+    suppliesInstructions.trim().length >= 20 && suppliesInstructions.trim().length <= 600;
+  const isNeedsValid =
+    collectionType === "dinero"
+      ? hasDonationMethod
+      : collectionType === "insumos"
+      ? hasSupplies && hasSuppliesInstructions
+      : hasDonationMethod && hasSupplies && hasSuppliesInstructions;
   const hasValidProfile = Boolean(profile?.full_name && profile.full_name.trim().length >= 2);
 
   return (
@@ -953,7 +1199,7 @@ function NuevaCausaContent() {
             { num: 1, label: "Fotos y Videos" },
             { num: 2, label: "Historia" },
             { num: 3, label: "Ubicación" },
-            { num: 4, label: "Donaciones" },
+            { num: 4, label: "Qué necesitas" },
             { num: 5, label: "Revisar" },
           ].map((s) => (
             <button
@@ -1229,64 +1475,66 @@ function NuevaCausaContent() {
               />
             </div>
 
-            {/* Goal Amount (Optional) */}
-            <div className="p-4 rounded-2xl glass-surface border border-glass-tint space-y-3">
-              <div className="flex items-center justify-between">
-                <div>
-                  <h4 className="font-semibold text-text-primary text-sm">
-                    ¿Deseas definir una meta económica?
-                  </h4>
-                  <p className="text-xs text-text-secondary">
-                    Opcional. Si la activas, se mostrará una barra de progreso.
-                  </p>
-                </div>
-                <button
-                  type="button"
-                  onClick={() => setHasGoal(!hasGoal)}
-                  className={`w-12 h-6 rounded-full transition-colors relative ${
-                    hasGoal ? "bg-accent" : "bg-glass-tint"
-                  }`}
-                >
-                  <span
-                    className={`absolute top-1 left-1 w-4 h-4 rounded-full bg-white transition-transform ${
-                      hasGoal ? "translate-x-6" : ""
+            {/* Goal Amount (Optional, only if includes money) */}
+            {(collectionType === "dinero" || collectionType === "ambas") && (
+              <div className="p-4 rounded-2xl glass-surface border border-glass-tint space-y-3">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <h4 className="font-semibold text-text-primary text-sm">
+                      ¿Deseas definir una meta económica?
+                    </h4>
+                    <p className="text-xs text-text-secondary">
+                      Opcional. Si la activas, se mostrará una barra de progreso.
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setHasGoal(!hasGoal)}
+                    className={`w-12 h-6 rounded-full transition-colors relative ${
+                      hasGoal ? "bg-accent" : "bg-glass-tint"
                     }`}
-                  />
-                </button>
-              </div>
-
-              {hasGoal && (
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-2">
-                  <div>
-                    <label className="text-xs text-text-secondary block mb-1">Monto de la meta</label>
-                    <input
-                      type="number"
-                      min="1"
-                      step="any"
-                      value={goalAmount}
-                      onChange={(e) => setGoalAmount(e.target.value ? Number(e.target.value) : "")}
-                      placeholder="Ej: 5000"
-                      className="w-full px-4 py-2.5 rounded-xl glass-surface border border-glass-tint focus:border-accent outline-none text-text-primary text-sm"
+                  >
+                    <span
+                      className={`absolute top-1 left-1 w-4 h-4 rounded-full bg-white transition-transform ${
+                        hasGoal ? "translate-x-6" : ""
+                      }`}
                     />
-                  </div>
-
-                  <div>
-                    <label className="text-xs text-text-secondary block mb-1">Moneda</label>
-                    <select
-                      value={currency}
-                      onChange={(e) => setCurrency(e.target.value)}
-                      className="w-full px-4 py-2.5 rounded-xl glass-surface border border-glass-tint focus:border-accent outline-none text-text-primary text-sm bg-transparent"
-                    >
-                      {CURRENCIES.map((c) => (
-                        <option key={c} value={c} className="bg-background text-text-primary">
-                          {c}
-                        </option>
-                      ))}
-                    </select>
-                  </div>
+                  </button>
                 </div>
-              )}
-            </div>
+
+                {hasGoal && (
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-2">
+                    <div>
+                      <label className="text-xs text-text-secondary block mb-1">Monto de la meta</label>
+                      <input
+                        type="number"
+                        min="1"
+                        step="any"
+                        value={goalAmount}
+                        onChange={(e) => setGoalAmount(e.target.value ? Number(e.target.value) : "")}
+                        placeholder="Ej: 5000"
+                        className="w-full px-4 py-2.5 rounded-xl glass-surface border border-glass-tint focus:border-accent outline-none text-text-primary text-sm"
+                      />
+                    </div>
+
+                    <div>
+                      <label className="text-xs text-text-secondary block mb-1">Moneda</label>
+                      <select
+                        value={currency}
+                        onChange={(e) => setCurrency(e.target.value)}
+                        className="w-full px-4 py-2.5 rounded-xl glass-surface border border-glass-tint focus:border-accent outline-none text-text-primary text-sm bg-transparent"
+                      >
+                        {CURRENCIES.map((c) => (
+                          <option key={c} value={c} className="bg-background text-text-primary">
+                            {c}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
           </div>
         )}
 
@@ -1417,161 +1665,362 @@ function NuevaCausaContent() {
           </div>
         )}
 
-        {/* ================= STEP 4: DONATION METHODS ================= */}
+        {/* ================= STEP 4: WHAT DO YOU NEED ================= */}
         {currentStep === 4 && (
           <div className="space-y-6">
-            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
-              <div>
-                <h2 className="text-xl font-bold text-text-primary">
-                  Paso 4 · Cómo Recibir Donaciones
-                </h2>
-                <p className="text-xs text-text-secondary mt-1">
-                  Registra entre 1 y 5 canales donde quienes quieran ayudarte te transferirán
-                  directamente.
-                </p>
-              </div>
-
-              <button
-                type="button"
-                onClick={() => setShowMethodModal(true)}
-                className="px-4 py-2 rounded-full bg-accent text-white text-xs font-semibold flex items-center gap-1.5 hover:bg-accent/90 shadow-md shadow-accent/20 self-start"
-              >
-                <IconoMas size={16} /> Añadir método
-              </button>
+            <div>
+              <h2 className="text-xl font-bold text-text-primary">
+                Paso 4 · Qué necesitas
+              </h2>
+              <p className="text-xs text-text-secondary mt-1">
+                Elige qué tipo de ayuda necesitas recibir para esta causa: dinero, insumos en especie o ambos.
+              </p>
             </div>
 
-            {/* Safety Warning */}
-            <div className="p-4 rounded-2xl bg-amber-500/10 border border-amber-500/30 text-amber-400 flex items-start gap-3 text-xs">
-              <IconoAlerta size={18} className="flex-shrink-0 mt-0.5" />
-              <div>
-                <p className="font-semibold">Revisa bien estos datos.</p>
-                <p className="mt-0.5 opacity-90">
-                  Las donaciones llegan directamente a tus cuentas. Puente no recibe, no retiene y
-                  no cobra comisión sobre ninguna donación.
-                </p>
-              </div>
+            {/* Selector de tipo de recolección */}
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+              {[
+                {
+                  id: "dinero" as const,
+                  title: "Dinero",
+                  desc: "Recibe fondos mediante transferencias bancarias o billeteras digitales.",
+                  icon: "💳",
+                },
+                {
+                  id: "insumos" as const,
+                  title: "Insumos",
+                  desc: "Recibe víveres, ropa, colchonetas, materiales o medicinas.",
+                  icon: "📦",
+                },
+                {
+                  id: "ambas" as const,
+                  title: "Ambos",
+                  desc: "Permite recibir tanto apoyo económico como donaciones en especie.",
+                  icon: "🤝",
+                },
+              ].map((opt) => (
+                <button
+                  key={opt.id}
+                  type="button"
+                  onClick={() => setCollectionType(opt.id)}
+                  className={`p-4 rounded-2xl border text-left transition-all ${
+                    collectionType === opt.id
+                      ? "bg-accent/15 border-accent text-text-primary shadow-md"
+                      : "glass-surface border-glass-tint hover:border-glass-tint/80 text-text-secondary"
+                  }`}
+                >
+                  <div className="text-2xl mb-2">{opt.icon}</div>
+                  <div className="font-bold text-sm text-text-primary">{opt.title}</div>
+                  <div className="text-xs text-text-secondary mt-1 leading-snug">{opt.desc}</div>
+                </button>
+              ))}
             </div>
 
-            {/* Profile Saved Methods selection (Sección 6) */}
-            {profileMethods.length > 0 && (
-              <div className="p-4 rounded-2xl glass-surface border border-glass-tint space-y-3">
-                <div>
-                  <p className="text-xs font-semibold text-text-primary flex items-center gap-1.5">
-                    <IconoTarjeta size={14} className="text-accent" />
-                    Tus métodos guardados en el perfil:
-                  </p>
-                  <p className="text-[11px] text-text-secondary mt-0.5">
-                    Marca con casilla los métodos que deseas activar en esta causa (mínimo 1, máximo 5).
-                  </p>
+            {/* SECCIÓN DINERO */}
+            {(collectionType === "dinero" || collectionType === "ambas") && (
+              <div className="space-y-4 pt-2 border-t border-[var(--line)]">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                  <div>
+                    <h3 className="text-base font-bold text-text-primary flex items-center gap-2">
+                      <IconoTarjeta size={18} className="text-accent" />
+                      Métodos para recibir donaciones en dinero
+                    </h3>
+                    <p className="text-xs text-text-secondary mt-0.5">
+                      Registra entre 1 y 5 canales donde quienes quieran ayudarte te transferirán directamente.
+                    </p>
+                  </div>
+
+                  <button
+                    type="button"
+                    onClick={() => setShowMethodModal(true)}
+                    className="px-4 py-2 rounded-full bg-accent text-white text-xs font-semibold flex items-center gap-1.5 hover:bg-accent/90 shadow-md shadow-accent/20 self-start"
+                  >
+                    <IconoMas size={16} /> Añadir método
+                  </button>
                 </div>
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
-                  {profileMethods.map((pm) => {
-                    const isChecked = donationMethods.some(
-                      (m) =>
-                        m.profile_method_id === pm.id ||
-                        (m.provider === pm.provider && m.account_value === pm.account_value)
-                    );
-                    return (
-                      <label
-                        key={pm.id}
-                        className={`p-3 rounded-xl border flex items-start gap-3 cursor-pointer transition-all ${
-                          isChecked
-                            ? "bg-accent/15 border-accent text-text-primary shadow-sm"
-                            : "glass-tint border-glass-tint hover:border-glass-tint/80 text-text-secondary"
-                        }`}
+
+                {/* Safety Warning */}
+                <div className="p-4 rounded-2xl bg-amber-500/10 border border-amber-500/30 text-amber-400 flex items-start gap-3 text-xs">
+                  <IconoAlerta size={18} className="flex-shrink-0 mt-0.5" />
+                  <div>
+                    <p className="font-semibold">Revisa bien estos datos.</p>
+                    <p className="mt-0.5 opacity-90">
+                      Las donaciones llegan directamente a tus cuentas. Puente no recibe, no retiene y no cobra comisión sobre ninguna donación.
+                    </p>
+                  </div>
+                </div>
+
+                {/* Profile Saved Methods selection */}
+                {profileMethods.length > 0 && (
+                  <div className="p-4 rounded-2xl glass-surface border border-glass-tint space-y-3">
+                    <div>
+                      <p className="text-xs font-semibold text-text-primary flex items-center gap-1.5">
+                        <IconoTarjeta size={14} className="text-accent" />
+                        Tus métodos guardados en el perfil:
+                      </p>
+                      <p className="text-[11px] text-text-secondary mt-0.5">
+                        Marca con casilla los métodos que deseas activar en esta causa (mínimo 1, máximo 5).
+                      </p>
+                    </div>
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+                      {profileMethods.map((pm) => {
+                        const isChecked = donationMethods.some(
+                          (m) =>
+                            m.profile_method_id === pm.id ||
+                            (m.provider === pm.provider && m.account_value === pm.account_value)
+                        );
+                        return (
+                          <label
+                            key={pm.id}
+                            className={`p-3 rounded-xl border flex items-start gap-3 cursor-pointer transition-all ${
+                              isChecked
+                                ? "bg-accent/15 border-accent text-text-primary shadow-sm"
+                                : "glass-tint border-glass-tint hover:border-glass-tint/80 text-text-secondary"
+                            }`}
+                          >
+                            <input
+                              type="checkbox"
+                              checked={isChecked}
+                              onChange={() => handleToggleProfileMethod(pm)}
+                              className="mt-1 rounded accent-[var(--accent)] cursor-pointer"
+                            />
+                            <div className="min-w-0 flex-1 text-xs">
+                              <div className="flex items-center gap-1.5">
+                                <span className="font-semibold text-text-primary">{pm.provider}</span>
+                                <span className="px-1.5 py-0.5 rounded bg-glass-tint text-[10px] uppercase font-mono text-accent">
+                                  {pm.kind.replace(/_/g, " ")}
+                                </span>
+                              </div>
+                              <div className="text-text-secondary truncate">{pm.account_holder}</div>
+                              <div className="font-mono text-[11px] text-text-primary truncate">
+                                {pm.account_value}
+                              </div>
+                            </div>
+                          </label>
+                        );
+                      })}
+                    </div>
+                  </div>
+                )}
+
+                {/* Option to copy from previous causes */}
+                {profileMethods.length === 0 && previousMethodsAvailable.length > 0 && donationMethods.length === 0 && (
+                  <div className="p-4 rounded-2xl glass-surface border border-glass-tint">
+                    <p className="text-xs font-semibold text-text-primary mb-2 flex items-center gap-1.5">
+                      <IconoCopiar size={14} className="text-accent" />
+                      Métodos utilizados en causas anteriores:
+                    </p>
+                    <div className="flex flex-wrap gap-2">
+                      {previousMethodsAvailable.map((prevM, idx) => (
+                        <button
+                          key={idx}
+                          type="button"
+                          onClick={() => handleCopyPreviousMethod(prevM)}
+                          className="px-3 py-1.5 rounded-xl glass-tint border border-glass-tint hover:border-accent text-xs text-text-primary flex items-center gap-1.5 transition-all"
+                        >
+                          <IconoMas size={12} className="text-accent" />
+                          <span>
+                            {prevM.provider}: {prevM.account_value}
+                          </span>
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {/* Current Methods List */}
+                {donationMethods.length > 0 ? (
+                  <div className="space-y-3">
+                    {donationMethods.map((m, idx) => (
+                      <div
+                        key={m.id || idx}
+                        className="p-4 rounded-2xl glass-surface border border-glass-tint flex items-center justify-between gap-4"
                       >
-                        <input
-                          type="checkbox"
-                          checked={isChecked}
-                          onChange={() => handleToggleProfileMethod(pm)}
-                          className="mt-1 rounded accent-[var(--accent)] cursor-pointer"
-                        />
-                        <div className="min-w-0 flex-1 text-xs">
-                          <div className="flex items-center gap-1.5">
-                            <span className="font-semibold text-text-primary">{pm.provider}</span>
-                            <span className="px-1.5 py-0.5 rounded bg-glass-tint text-[10px] uppercase font-mono text-accent">
-                              {pm.kind.replace(/_/g, " ")}
+                        <div className="space-y-1 text-xs">
+                          <div className="flex items-center gap-2">
+                            <span className="font-bold text-text-primary text-sm">{m.provider}</span>
+                            <span className="px-2 py-0.5 rounded-md bg-glass-tint text-accent text-[10px] uppercase font-semibold">
+                              {METHOD_KINDS.find((k) => k.id === m.kind)?.label.split(" ")[0]}
                             </span>
                           </div>
-                          <div className="text-text-secondary truncate">{pm.account_holder}</div>
-                          <div className="font-mono text-[11px] text-text-primary truncate">
-                            {pm.account_value}
-                          </div>
+                          <p className="text-text-secondary">
+                            <span className="font-medium text-text-primary">Titular:</span> {m.account_holder}
+                          </p>
+                          <p className="font-mono text-text-primary">{m.account_value}</p>
+                          {m.details && (
+                            <p className="text-text-secondary italic text-[11px]">{m.details}</p>
+                          )}
                         </div>
-                      </label>
-                    );
-                  })}
-                </div>
-              </div>
-            )}
 
-            {/* Option to copy from previous causes (fallback if no profile methods) */}
-            {profileMethods.length === 0 && previousMethodsAvailable.length > 0 && donationMethods.length === 0 && (
-              <div className="p-4 rounded-2xl glass-surface border border-glass-tint">
-                <p className="text-xs font-semibold text-text-primary mb-2 flex items-center gap-1.5">
-                  <IconoCopiar size={14} className="text-accent" />
-                  Métodos utilizados en causas anteriores:
-                </p>
-                <div className="flex flex-wrap gap-2">
-                  {previousMethodsAvailable.map((prevM, idx) => (
-                    <button
-                      key={idx}
-                      type="button"
-                      onClick={() => handleCopyPreviousMethod(prevM)}
-                      className="px-3 py-1.5 rounded-xl glass-tint border border-glass-tint hover:border-accent text-xs text-text-primary flex items-center gap-1.5 transition-all"
-                    >
-                      <IconoMas size={12} className="text-accent" />
-                      <span>
-                        {prevM.provider}: {prevM.account_value}
-                      </span>
-                    </button>
-                  ))}
-                </div>
-              </div>
-            )}
-
-            {/* Current Methods List */}
-            {donationMethods.length > 0 ? (
-              <div className="space-y-3">
-                {donationMethods.map((m, idx) => (
-                  <div
-                    key={m.id || idx}
-                    className="p-4 rounded-2xl glass-surface border border-glass-tint flex items-center justify-between gap-4"
-                  >
-                    <div className="space-y-1 text-xs">
-                      <div className="flex items-center gap-2">
-                        <span className="font-bold text-text-primary text-sm">{m.provider}</span>
-                        <span className="px-2 py-0.5 rounded-md bg-glass-tint text-accent text-[10px] uppercase font-semibold">
-                          {METHOD_KINDS.find((k) => k.id === m.kind)?.label.split(" ")[0]}
-                        </span>
+                        <button
+                          type="button"
+                          onClick={() => handleRemoveDonationMethod(m.id)}
+                          className="p-2 rounded-full text-text-secondary hover:text-red-400 hover:bg-glass-tint transition-colors"
+                          title="Eliminar método"
+                        >
+                          <IconoBasura size={16} />
+                        </button>
                       </div>
-                      <p className="text-text-secondary">
-                        <span className="font-medium text-text-primary">Titular:</span> {m.account_holder}
-                      </p>
-                      <p className="font-mono text-text-primary">{m.account_value}</p>
-                      {m.details && (
-                        <p className="text-text-secondary italic text-[11px]">{m.details}</p>
-                      )}
-                    </div>
+                    ))}
+                  </div>
+                ) : (
+                  <div className="p-6 rounded-2xl border border-dashed border-glass-tint text-center text-text-secondary text-xs">
+                    <IconoTarjeta size={24} className="mx-auto mb-1.5 opacity-40" />
+                    <p>Aún no has agregado ningún método para recibir dinero.</p>
+                    <p className="text-[11px] opacity-70 mt-0.5">
+                      Se requiere al menos 1 método si pides dinero.
+                    </p>
+                  </div>
+                )}
+              </div>
+            )}
 
+            {/* SECCIÓN INSUMOS */}
+            {(collectionType === "insumos" || collectionType === "ambas") && (
+              <div className="space-y-4 pt-2 border-t border-[var(--line)]">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                  <div>
+                    <h3 className="text-base font-bold text-text-primary flex items-center gap-2">
+                      <span>📦</span>
+                      Insumos que necesitas
+                    </h3>
+                    <p className="text-xs text-text-secondary mt-0.5">
+                      Agrega entre 1 y 12 renglones con las cosas específicas que requieres.
+                    </p>
+                  </div>
+
+                  <button
+                    type="button"
+                    onClick={handleAddSupply}
+                    disabled={suppliesList.length >= 12}
+                    className="px-4 py-2 rounded-full bg-accent text-white text-xs font-semibold flex items-center gap-1.5 hover:bg-accent/90 shadow-md shadow-accent/20 disabled:opacity-50 self-start"
+                  >
+                    <IconoMas size={16} /> Añadir insumo
+                  </button>
+                </div>
+
+                {suppliesList.length > 0 ? (
+                  <div className="space-y-2.5">
+                    {suppliesList.map((sup, idx) => (
+                      <div
+                        key={sup.id || idx}
+                        className="p-3 sm:p-4 rounded-2xl glass-surface border border-glass-tint flex flex-col sm:flex-row sm:items-center gap-3 text-xs"
+                      >
+                        <div className="flex items-center gap-1 text-text-secondary">
+                          <button
+                            type="button"
+                            disabled={idx === 0}
+                            onClick={() => handleMoveSupply(idx, "up")}
+                            className="p-1 rounded hover:bg-glass-tint disabled:opacity-30"
+                            title="Subir"
+                            aria-label="Subir"
+                          >
+                            <IconoFlechaArriba size={14} />
+                          </button>
+                          <button
+                            type="button"
+                            disabled={idx === suppliesList.length - 1}
+                            onClick={() => handleMoveSupply(idx, "down")}
+                            className="p-1 rounded hover:bg-glass-tint disabled:opacity-30"
+                            title="Bajar"
+                            aria-label="Bajar"
+                          >
+                            <IconoFlechaAbajo size={14} />
+                          </button>
+                          <span className="font-mono text-[11px] w-4 text-center">{idx + 1}</span>
+                        </div>
+
+                        <div className="flex-1 min-w-0">
+                          <input
+                            type="text"
+                            placeholder="Nombre del insumo (ej: Colchonetas, Leche en polvo) *"
+                            value={sup.name}
+                            maxLength={80}
+                            onChange={(e) => handleUpdateSupply(idx, "name", e.target.value)}
+                            className="w-full px-3 py-2 rounded-xl glass-surface border border-glass-tint text-text-primary text-xs outline-none focus:border-accent"
+                          />
+                        </div>
+
+                        <div className="flex items-center gap-2">
+                          <input
+                            type="number"
+                            min="1"
+                            placeholder="Cant."
+                            value={sup.quantity_needed}
+                            onChange={(e) =>
+                              handleUpdateSupply(
+                                idx,
+                                "quantity_needed",
+                                e.target.value ? Number(e.target.value) : ""
+                              )
+                            }
+                            className="w-20 px-3 py-2 rounded-xl glass-surface border border-glass-tint text-text-primary text-xs outline-none font-mono"
+                          />
+
+                          <input
+                            type="text"
+                            placeholder="Unidad (kg, cajas...)"
+                            value={sup.unit}
+                            maxLength={20}
+                            onChange={(e) => handleUpdateSupply(idx, "unit", e.target.value)}
+                            className="w-32 px-3 py-2 rounded-xl glass-surface border border-glass-tint text-text-primary text-xs outline-none"
+                          />
+
+                          <button
+                            type="button"
+                            onClick={() => handleDeleteSupply(idx)}
+                            className="p-2 rounded-xl text-text-secondary hover:text-red-400 hover:bg-glass-tint transition-colors"
+                            title="Eliminar insumo"
+                          >
+                            <IconoBasura size={16} />
+                          </button>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <div className="p-6 rounded-2xl border border-dashed border-glass-tint text-center text-text-secondary text-xs">
+                    <span className="text-2xl mb-1 block">📦</span>
+                    <p>Aún no has agregado ningún insumo a la lista.</p>
                     <button
                       type="button"
-                      onClick={() => handleRemoveDonationMethod(m.id)}
-                      className="p-2 rounded-full text-text-secondary hover:text-red-400 hover:bg-glass-tint transition-colors"
-                      title="Eliminar método"
+                      onClick={handleAddSupply}
+                      className="mt-2 text-accent font-semibold underline text-xs"
                     >
-                      <IconoBasura size={16} />
+                      + Añadir el primer insumo
                     </button>
                   </div>
-                ))}
-              </div>
-            ) : (
-              <div className="p-8 rounded-3xl border border-dashed border-glass-tint text-center text-text-secondary text-xs">
-                <IconoTarjeta size={28} className="mx-auto mb-2 opacity-40" />
-                <p>Aún no has agregado ningún medio para recibir donaciones.</p>
-                <p className="text-[11px] opacity-70 mt-1">
-                  Se requiere al menos 1 método para poder publicar.
-                </p>
+                )}
+
+                {/* Instrucciones de entrega */}
+                <div className="space-y-1.5 pt-2">
+                  <div className="flex justify-between items-center text-xs">
+                    <label className="font-semibold text-text-primary">
+                      Cómo hacer llegar los insumos *
+                    </label>
+                    <span
+                      className={
+                        suppliesInstructions.trim().length < 20 ||
+                        suppliesInstructions.trim().length > 600
+                          ? "text-amber-400"
+                          : "text-text-secondary"
+                      }
+                    >
+                      {suppliesInstructions.length} / 600 (mínimo 20)
+                    </span>
+                  </div>
+                  <p className="text-[11px] text-text-secondary">
+                    Privado. Solo se mostrará a personas que hayan iniciado sesión. No des una dirección exacta si prefieres coordinar por mensaje.
+                  </p>
+                  <textarea
+                    rows={3}
+                    maxLength={600}
+                    value={suppliesInstructions}
+                    onChange={(e) => setSuppliesInstructions(e.target.value)}
+                    placeholder="Ej: Recibimos en la parroquia del barrio, de 8 a 5. Escríbeme antes por WhatsApp al número que aparece cuando inicias sesión."
+                    className="w-full px-4 py-3 rounded-2xl glass-surface border border-glass-tint focus:border-accent outline-none text-text-primary text-xs whitespace-pre-wrap resize-y"
+                  />
+                </div>
               </div>
             )}
 
@@ -1764,6 +2213,14 @@ function NuevaCausaContent() {
                 published_at={new Date().toISOString()}
                 goal_amount={hasGoal && typeof goalAmount === "number" ? goalAmount : null}
                 currency={currency}
+                collection_type={collectionType}
+                supplies={suppliesList.map((s, idx) => ({
+                  id: s.id || String(idx),
+                  name: s.name,
+                  quantity_needed: typeof s.quantity_needed === "number" ? s.quantity_needed : null,
+                  quantity_received: s.quantity_received || 0,
+                  position: idx,
+                }))}
                 author={{
                   id: user?.id || "preview-id",
                   full_name: profile?.full_name || "Mi Nombre",
@@ -1820,16 +2277,44 @@ function NuevaCausaContent() {
                   </span>
                 </div>
 
-                <div
-                  className={`flex items-center gap-2 ${
-                    hasDonationMethod ? "text-emerald-400" : "text-amber-400"
-                  }`}
-                >
-                  {hasDonationMethod ? <IconoCheck size={16} /> : <IconoAlerta size={16} />}
-                  <span>
-                    Al menos 1 método de donación ({donationMethods.length} configurados)
-                  </span>
-                </div>
+                {(collectionType === "dinero" || collectionType === "ambas") && (
+                  <div
+                    className={`flex items-center gap-2 ${
+                      hasDonationMethod ? "text-emerald-400" : "text-amber-400"
+                    }`}
+                  >
+                    {hasDonationMethod ? <IconoCheck size={16} /> : <IconoAlerta size={16} />}
+                    <span>
+                      Al menos 1 método de donación ({donationMethods.length} configurados)
+                    </span>
+                  </div>
+                )}
+
+                {(collectionType === "insumos" || collectionType === "ambas") && (
+                  <>
+                    <div
+                      className={`flex items-center gap-2 ${
+                        hasSupplies ? "text-emerald-400" : "text-amber-400"
+                      }`}
+                    >
+                      {hasSupplies ? <IconoCheck size={16} /> : <IconoAlerta size={16} />}
+                      <span>
+                        Al menos 1 insumo en la lista ({suppliesList.length} agregados)
+                      </span>
+                    </div>
+
+                    <div
+                      className={`flex items-center gap-2 ${
+                        hasSuppliesInstructions ? "text-emerald-400" : "text-amber-400"
+                      }`}
+                    >
+                      {hasSuppliesInstructions ? <IconoCheck size={16} /> : <IconoAlerta size={16} />}
+                      <span>
+                        Instrucciones de entrega ({suppliesInstructions.trim().length}/20 caracteres mín.)
+                      </span>
+                    </div>
+                  </>
+                )}
 
                 <div
                   className={`flex items-center gap-2 ${

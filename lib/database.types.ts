@@ -56,46 +56,55 @@ export type Database = {
         Row: {
           alt: string | null
           bucket: string
+          bytes: number | null
           cause_id: string
           created_at: string
           duration_seconds: number | null
           height: number | null
           id: string
+          is_poster: boolean
           kind: Database["public"]["Enums"]["media_kind"]
           owner_id: string
           phase: Database["public"]["Enums"]["media_phase"]
           position: number
           storage_path: string
+          thumb_path: string | null
           width: number | null
         }
         Insert: {
           alt?: string | null
           bucket: string
+          bytes?: number | null
           cause_id: string
           created_at?: string
           duration_seconds?: number | null
           height?: number | null
           id?: string
+          is_poster?: boolean
           kind: Database["public"]["Enums"]["media_kind"]
           owner_id: string
           phase?: Database["public"]["Enums"]["media_phase"]
           position?: number
           storage_path: string
+          thumb_path?: string | null
           width?: number | null
         }
         Update: {
           alt?: string | null
           bucket?: string
+          bytes?: number | null
           cause_id?: string
           created_at?: string
           duration_seconds?: number | null
           height?: number | null
           id?: string
+          is_poster?: boolean
           kind?: Database["public"]["Enums"]["media_kind"]
           owner_id?: string
           phase?: Database["public"]["Enums"]["media_phase"]
           position?: number
           storage_path?: string
+          thumb_path?: string | null
           width?: number | null
         }
         Relationships: [
@@ -160,6 +169,60 @@ export type Database = {
           },
         ]
       }
+      cause_supplies: {
+        Row: {
+          cause_id: string
+          created_at: string
+          id: string
+          name: string
+          owner_id: string
+          position: number
+          quantity_needed: number | null
+          quantity_received: number
+          unit: string | null
+          updated_at: string
+        }
+        Insert: {
+          cause_id: string
+          created_at?: string
+          id?: string
+          name: string
+          owner_id: string
+          position?: number
+          quantity_needed?: number | null
+          quantity_received?: number
+          unit?: string | null
+          updated_at?: string
+        }
+        Update: {
+          cause_id?: string
+          created_at?: string
+          id?: string
+          name?: string
+          owner_id?: string
+          position?: number
+          quantity_needed?: number | null
+          quantity_received?: number
+          unit?: string | null
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "cause_supplies_cause_id_fkey"
+            columns: ["cause_id"]
+            isOneToOne: false
+            referencedRelation: "causes"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "cause_supplies_owner_id_fkey"
+            columns: ["owner_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       causes: {
         Row: {
           author_id: string
@@ -167,14 +230,17 @@ export type Database = {
           city: string | null
           closed_at: string | null
           closing_note: string | null
+          collection_type: Database["public"]["Enums"]["collection_type"]
           comments_count: number
           country_code: string | null
           created_at: string
           currency: string
           description: string | null
           finalized_at: string | null
+          first_support_confirmed_at: string | null
           goal_amount: number | null
           id: string
+          is_example: boolean
           is_seed: boolean
           lat: number | null
           lng: number | null
@@ -183,6 +249,7 @@ export type Database = {
           region: string | null
           saves_count: number
           status: Database["public"]["Enums"]["cause_status"]
+          supplies_instructions: string | null
           title: string | null
           updated_at: string
         }
@@ -192,14 +259,17 @@ export type Database = {
           city?: string | null
           closed_at?: string | null
           closing_note?: string | null
+          collection_type?: Database["public"]["Enums"]["collection_type"]
           comments_count?: number
           country_code?: string | null
           created_at?: string
           currency?: string
           description?: string | null
           finalized_at?: string | null
+          first_support_confirmed_at?: string | null
           goal_amount?: number | null
           id?: string
+          is_example?: boolean
           is_seed?: boolean
           lat?: number | null
           lng?: number | null
@@ -208,6 +278,7 @@ export type Database = {
           region?: string | null
           saves_count?: number
           status?: Database["public"]["Enums"]["cause_status"]
+          supplies_instructions?: string | null
           title?: string | null
           updated_at?: string
         }
@@ -217,14 +288,17 @@ export type Database = {
           city?: string | null
           closed_at?: string | null
           closing_note?: string | null
+          collection_type?: Database["public"]["Enums"]["collection_type"]
           comments_count?: number
           country_code?: string | null
           created_at?: string
           currency?: string
           description?: string | null
           finalized_at?: string | null
+          first_support_confirmed_at?: string | null
           goal_amount?: number | null
           id?: string
+          is_example?: boolean
           is_seed?: boolean
           lat?: number | null
           lng?: number | null
@@ -233,6 +307,7 @@ export type Database = {
           region?: string | null
           saves_count?: number
           status?: Database["public"]["Enums"]["cause_status"]
+          supplies_instructions?: string | null
           title?: string | null
           updated_at?: string
         }
@@ -661,6 +736,11 @@ export type Database = {
         }
         Returns: undefined
       }
+      confirm_support: {
+        Args: { p_amount?: number; p_cause_id: string; p_supplies?: Json }
+        Returns: undefined
+      }
+      create_example_cause: { Args: never; Returns: string }
       escape_like: { Args: { t: string }; Returns: string }
       f_unaccent: { Args: { "": string }; Returns: string }
       feed_causes: {
@@ -680,14 +760,17 @@ export type Database = {
           city: string | null
           closed_at: string | null
           closing_note: string | null
+          collection_type: Database["public"]["Enums"]["collection_type"]
           comments_count: number
           country_code: string | null
           created_at: string
           currency: string
           description: string | null
           finalized_at: string | null
+          first_support_confirmed_at: string | null
           goal_amount: number | null
           id: string
+          is_example: boolean
           is_seed: boolean
           lat: number | null
           lng: number | null
@@ -696,15 +779,10 @@ export type Database = {
           region: string | null
           saves_count: number
           status: Database["public"]["Enums"]["cause_status"]
+          supplies_instructions: string | null
           title: string | null
           updated_at: string
         }[]
-        SetofOptions: {
-          from: "*"
-          to: "causes"
-          isOneToOne: false
-          isSetofReturn: true
-        }
       }
       feed_facets: {
         Args: {
@@ -725,14 +803,17 @@ export type Database = {
           city: string | null
           closed_at: string | null
           closing_note: string | null
+          collection_type: Database["public"]["Enums"]["collection_type"]
           comments_count: number
           country_code: string | null
           created_at: string
           currency: string
           description: string | null
           finalized_at: string | null
+          first_support_confirmed_at: string | null
           goal_amount: number | null
           id: string
+          is_example: boolean
           is_seed: boolean
           lat: number | null
           lng: number | null
@@ -741,15 +822,10 @@ export type Database = {
           region: string | null
           saves_count: number
           status: Database["public"]["Enums"]["cause_status"]
+          supplies_instructions: string | null
           title: string | null
           updated_at: string
         }[]
-        SetofOptions: {
-          from: "*"
-          to: "causes"
-          isOneToOne: false
-          isSetofReturn: true
-        }
       }
       search_people_and_causes: {
         Args: { max_results?: number; q: string }
@@ -783,6 +859,7 @@ export type Database = {
         | "educacion"
         | "otra"
       cause_status: "borrador" | "activa" | "cerrada" | "finalizada" | "oculta"
+      collection_type: "dinero" | "insumos" | "ambas"
       comment_thread: "causa" | "resultado"
       donation_method_kind:
         | "transferencia_bancaria"
@@ -939,6 +1016,7 @@ export const Constants = {
         "otra",
       ],
       cause_status: ["borrador", "activa", "cerrada", "finalizada", "oculta"],
+      collection_type: ["dinero", "insumos", "ambas"],
       comment_thread: ["causa", "resultado"],
       donation_method_kind: [
         "transferencia_bancaria",

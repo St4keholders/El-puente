@@ -285,6 +285,33 @@ export async function fetchFeedPage(
     });
   }
 
+  // 3. Insumos para causas que requieren insumos o ambas
+  const suppliesByCause: Record<
+    string,
+    Array<{ id: string; name: string; quantity_needed?: number | null; quantity_received?: number | null; position: number }>
+  > = {};
+
+  if (causeIds.length > 0) {
+    const { data: supplyRows } = await supabase
+      .from("cause_supplies")
+      .select("id, cause_id, name, quantity_needed, quantity_received, position")
+      .in("cause_id", causeIds)
+      .order("position", { ascending: true });
+
+    (supplyRows || []).forEach((row: any) => {
+      if (!suppliesByCause[row.cause_id]) {
+        suppliesByCause[row.cause_id] = [];
+      }
+      suppliesByCause[row.cause_id].push({
+        id: row.id,
+        name: row.name,
+        quantity_needed: row.quantity_needed,
+        quantity_received: row.quantity_received,
+        position: row.position,
+      });
+    });
+  }
+
   // Mapear a CauseCardProps
   const causes: CauseCardProps[] = items.map((c: any) => {
     const author = c.author || {
@@ -335,6 +362,9 @@ export async function fetchFeedPage(
       currency: c.currency || "USD",
       comments_count: c.comments_count || 0,
       saves_count: c.saves_count || 0,
+      collection_type: c.collection_type || "dinero",
+      is_example: Boolean(c.is_example),
+      supplies: suppliesByCause[c.id] || [],
       author: {
         id: author.id,
         full_name: author.full_name || "Usuario",

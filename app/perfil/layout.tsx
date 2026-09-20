@@ -79,38 +79,48 @@ export default function PerfilLayout({ children }: { children: React.ReactNode }
           {/* Columna Izquierda: Tarjeta de Navegación Fija */}
           <aside className="hidden lg:block w-[280px] xl:w-[310px] flex-shrink-0 sticky top-28 xl:top-32">
             <div className="p-6 rounded-3xl border border-[var(--line)] bg-[color-mix(in_oklab,var(--bg)_84%,transparent)] shadow-sm space-y-6">
-              {/* Identidad del usuario */}
+              {/* Identidad del usuario (PLAN.md 4.1) */}
               <div className="flex flex-col items-center text-center">
-                <div className="relative w-[72px] h-[72px] rounded-full overflow-hidden border-2 border-[var(--line)] bg-[var(--avatar)] mb-3 shadow-md flex items-center justify-center">
-                  {profile?.avatar_url ? (
-                    <img
-                      src={profile.avatar_url}
-                      alt={profile.full_name}
-                      referrerPolicy="no-referrer"
-                      className="w-full h-full object-cover"
-                    />
-                  ) : (
-                    <span className="text-xl font-bold text-[var(--ink)]">
-                      {(profile?.full_name || user?.email || "P")[0].toUpperCase()}
-                    </span>
-                  )}
-                </div>
+                {loading || !profile ? (
+                  <div className="flex flex-col items-center space-y-2 animate-pulse w-full">
+                    <div className="w-[72px] h-[72px] rounded-full bg-[var(--line)] mb-2" />
+                    <div className="w-32 h-4 rounded bg-[var(--line)]" />
+                    <div className="w-20 h-3 rounded bg-[var(--line)]" />
+                  </div>
+                ) : (
+                  <>
+                    <div className="relative w-[72px] h-[72px] rounded-full overflow-hidden border-2 border-[var(--line)] bg-[var(--avatar)] mb-3 shadow-md flex items-center justify-center">
+                      {profile?.avatar_url ? (
+                        <img
+                          src={profile.avatar_url}
+                          alt={profile.full_name}
+                          referrerPolicy="no-referrer"
+                          className="w-full h-full object-cover"
+                        />
+                      ) : (
+                        <span className="text-xl font-bold text-[var(--ink)]">
+                          {(profile?.full_name || user?.email || "P")[0].toUpperCase()}
+                        </span>
+                      )}
+                    </div>
 
-                <h2 className="text-base font-bold text-[var(--ink)] tracking-tight truncate max-w-full">
-                  {profile?.full_name || "Mi Cuenta"}
-                </h2>
-                <p className="text-xs font-mono text-[var(--ink-3)] truncate max-w-full">
-                  @{profile?.username || "usuario"}
-                </p>
+                    <h2 className="text-base font-bold text-[var(--ink)] tracking-tight truncate max-w-full">
+                      {profile?.full_name}
+                    </h2>
+                    <p className="text-xs font-mono text-[var(--ink-3)] truncate max-w-full">
+                      @{profile?.username}
+                    </p>
 
-                {profile?.username && (
-                  <Link
-                    href={`/u/${profile.username}`}
-                    className="mt-3 inline-flex items-center gap-1 text-xs font-medium text-[var(--accent-ink)] hover:underline"
-                  >
-                    <span>Ver mi perfil público</span>
-                    <IconoFlechaDerecha size={12} />
-                  </Link>
+                    {profile?.username && (
+                      <Link
+                        href={`/u/${profile.username}`}
+                        className="mt-3 inline-flex items-center gap-1 text-xs font-medium text-[var(--accent-ink)] hover:underline"
+                      >
+                        <span>Ver mi perfil público</span>
+                        <IconoFlechaDerecha size={12} />
+                      </Link>
+                    )}
+                  </>
                 )}
               </div>
 

@@ -13,6 +13,7 @@ export default function CausasGuardadasPage() {
 
   const [causes, setCauses] = useState<CauseCardProps[]>([]);
   const [loading, setLoading] = useState(true);
+  const [fetchError, setFetchError] = useState(false);
   const [loadingMore, setLoadingMore] = useState(false);
   const [cursor, setCursor] = useState<string | null>(null);
   const [hasMore, setHasMore] = useState(false);
@@ -170,6 +171,7 @@ export default function CausasGuardadasPage() {
         }
       } catch (err) {
         console.error("Error loading saved causes:", err);
+        setFetchError(true);
       } finally {
         setLoading(false);
         setLoadingMore(false);
@@ -181,6 +183,8 @@ export default function CausasGuardadasPage() {
   useEffect(() => {
     if (!userLoading && user) {
       fetchSavedCauses(user.id);
+    } else if (!userLoading && !user) {
+      setLoading(false);
     }
   }, [userLoading, user, fetchSavedCauses]);
 
@@ -224,6 +228,20 @@ export default function CausasGuardadasPage() {
         <div className="py-16 text-center text-sm text-[var(--ink-3)] flex items-center justify-center gap-2">
           <IconoCargando className="animate-spin text-[var(--accent)]" size={20} />
           <span>Cargando causas guardadas...</span>
+        </div>
+      ) : fetchError ? (
+        <div className="py-16 px-6 text-center rounded-2xl border border-[var(--line)] bg-[var(--surface-solid)]/40 backdrop-blur-md space-y-3">
+          <p className="text-sm font-semibold text-[var(--ink)]">No pudimos cargar esta sección</p>
+          <button
+            type="button"
+            onClick={() => {
+              setFetchError(false);
+              if (user) fetchSavedCauses(user.id);
+            }}
+            className="px-4 py-2 text-xs font-semibold rounded-xl bg-[var(--cta)] hover:bg-[var(--accent)] text-white transition-all cursor-pointer"
+          >
+            Reintentar
+          </button>
         </div>
       ) : causes.length === 0 ? (
         <div className="py-16 px-6 text-center rounded-2xl border border-[var(--line)] bg-[var(--surface-solid)]/40 backdrop-blur-md">

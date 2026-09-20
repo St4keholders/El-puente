@@ -13,7 +13,9 @@ import {
   IconoAlerta,
   IconoCheck,
   IconoFlechaDerecha,
+  IconoTarjeta,
 } from "@/components/iconos";
+import { ModalRegistrarApoyo } from "@/components/cause/ModalRegistrarApoyo";
 
 type CauseStatusTab = "borrador" | "activa" | "cerrada" | "finalizada";
 
@@ -29,6 +31,18 @@ const TABS: TabConfig[] = [
   { key: "finalizada", label: "Finalizadas" },
 ];
 
+interface ExtendedCauseCardProps extends CauseCardProps {
+  first_support_confirmed_at?: string | null;
+  supplies?: Array<{
+    id: string;
+    name: string;
+    unit?: string | null;
+    quantity_needed?: number | null;
+    quantity_received: number;
+    position?: number;
+  }>;
+}
+
 export default function MisCausasPage() {
   const router = useRouter();
   const { user, profile, loading: userLoading } = useUser();
@@ -42,16 +56,27 @@ export default function MisCausasPage() {
     finalizada: 0,
   });
 
-  const [causes, setCauses] = useState<CauseCardProps[]>([]);
+  const [causes, setCauses] = useState<ExtendedCauseCardProps[]>([]);
   const [loading, setLoading] = useState(true);
   const [loadingMore, setLoadingMore] = useState(false);
   const [cursor, setCursor] = useState<string | null>(null);
   const [hasMore, setHasMore] = useState(false);
 
+  // Modal registrar apoyo
+  const [supportModalCause, setSupportModalCause] = useState<ExtendedCauseCardProps | null>(null);
+
   // Delete modal state
   const [deletingCauseId, setDeletingCauseId] = useState<string | null>(null);
   const [isDeleting, setIsDeleting] = useState(false);
   const [deleteError, setDeleteError] = useState<string | null>(null);
+
+  // Create example cause
+  const [hasExampleCause, setHasExampleCause] = useState(false);
+  const [creatingExample, setCreatingExample] = useState(false);
+  const [exampleError, setExampleError] = useState<string | null>(null);
+
+  // Page-level error
+  const [pageError, setPageError] = useState<string | null>(null);
 
   const observerTarget = useRef<HTMLDivElement>(null);
 
@@ -71,6 +96,15 @@ export default function MisCausasPage() {
         cerrada: cerradasRes.count || 0,
         finalizada: finalizadasRes.count || 0,
       });
+
+      // Check if example cause exists
+      const { data: exRow } = await supabase
+        .from("causes")
+        .select("id")
+        .eq("author_id", userId)
+        .eq("is_example", true)
+        .maybeSingle();
+      setHasExampleCause(Boolean(exRow));
     } catch (err) {
       console.error("Error fetching causes counts:", err);
     }
@@ -81,6 +115,7 @@ export default function MisCausasPage() {
     async (userId: string, tab: CauseStatusTab, nextCursor: string | null = null) => {
       if (!nextCursor) {
         setLoading(true);
+        setPageError(null);
       } else {
         setLoadingMore(true);
       }
@@ -106,9 +141,13 @@ export default function MisCausasPage() {
             saves_count,
             created_at,
             updated_at,
+            collection_type,
+            is_example,
+            first_support_confirmed_at,
             profiles:author_id(id, full_name, username, avatar_url),
             cause_media(id, storage_path, kind, position, width, height),
-            cause_results(summary, amount_received)
+            cause_results(summary, amount_received),
+            cause_supplies(id, name, unit, quantity_needed, quantity_received, position)
           `)
           .eq("author_id", userId)
           .eq("status", tab)
@@ -126,7 +165,7 @@ export default function MisCausasPage() {
         const pageHasMore = items.length > 10;
         const pageItems = pageHasMore ? items.slice(0, 10) : items;
 
-        const mapped: CauseCardProps[] = pageItems.map((c: any) => {
+        const mapped: ExtendedCauseCardProps[] = pageItems.map((c: any) => {
           const media: CauseMediaItem[] = (c.cause_media || []).map((m: any) => ({
             id: m.id,
             storage_path: m.storage_path,
@@ -137,6 +176,9 @@ export default function MisCausasPage() {
           }));
 
           const results = Array.isArray(c.cause_results) ? c.cause_results[0] : c.cause_results;
+          const suppliesList = (c.cause_supplies || []).sort(
+            (a: any, b: any) => (a.position ?? 0) - (b.position ?? 0)
+          );
 
           return {
             id: c.id,
@@ -154,6 +196,10 @@ export default function MisCausasPage() {
             currency: c.currency || "USD",
             comments_count: c.comments_count || 0,
             saves_count: c.saves_count || 0,
+            collection_type: c.collection_type,
+            is_example: c.is_example,
+            first_support_confirmed_at: c.first_support_confirmed_at,
+            supplies: suppliesList,
             author: {
               id: c.profiles?.id || userId,
               full_name: c.profiles?.full_name || profile?.full_name || "Mi perfil",
@@ -179,8 +225,9 @@ export default function MisCausasPage() {
         } else {
           setCursor(null);
         }
-      } catch (err) {
+      } catch (err: any) {
         console.error("Error loading causes:", err);
+        setPageError("No pudimos cargar esta sección");
       } finally {
         setLoading(false);
         setLoadingMore(false);
@@ -193,6 +240,8 @@ export default function MisCausasPage() {
     if (!userLoading && user) {
       fetchCounts(user.id);
       fetchCauses(user.id, activeTab);
+    } else if (!userLoading && !user) {
+      setLoading(false);
     }
   }, [userLoading, user, activeTab, fetchCounts, fetchCauses]);
 
@@ -214,7 +263,7 @@ export default function MisCausasPage() {
     };
   }, [hasMore, loadingMore, user, cursor, activeTab, fetchCauses]);
 
-  // Delete draft action
+  // Delete cause action (respects server-side CAUSA_NO_BORRABLE trigger - PLAN.md 6.3)
   const handleDeleteDraft = async () => {
     if (!deletingCauseId || !user) return;
     setIsDeleting(true);
@@ -225,19 +274,46 @@ export default function MisCausasPage() {
         .from("causes")
         .delete()
         .eq("id", deletingCauseId)
-        .eq("author_id", user.id)
-        .eq("status", "borrador");
+        .eq("author_id", user.id);
 
-      if (error) throw error;
+      if (error) {
+        const msg = error.message?.includes("CAUSA_NO_BORRABLE")
+          ? "Esta causa ya recibió apoyo confirmado y no se puede eliminar. Por transparencia solo puedes cerrarla."
+          : error.message || "No se pudo eliminar la causa.";
+        throw new Error(msg);
+      }
 
       setCauses((prev) => prev.filter((c) => c.id !== deletingCauseId));
-      setCounts((prev) => ({ ...prev, borrador: Math.max(0, prev.borrador - 1) }));
+      setCounts((prev) => {
+        const key = activeTab;
+        return { ...prev, [key]: Math.max(0, prev[key] - 1) };
+      });
       setDeletingCauseId(null);
     } catch (err: any) {
-      console.error("Error deleting draft:", err);
-      setDeleteError(err?.message || "No se pudo eliminar el borrador.");
+      console.error("Error deleting cause:", err);
+      setDeleteError(err?.message || "No se pudo eliminar la causa.");
     } finally {
       setIsDeleting(false);
+    }
+  };
+
+  // Create example cause (PLAN.md 6.2)
+  const handleCreateExample = async () => {
+    if (!user) return;
+    setCreatingExample(true);
+    setExampleError(null);
+    try {
+      const { error } = await supabase.rpc("create_example_cause");
+      if (error) throw error;
+      setActiveTab("activa");
+      await fetchCounts(user.id);
+      await fetchCauses(user.id, "activa");
+      setHasExampleCause(true);
+    } catch (err: any) {
+      console.error("Error creating example cause:", err);
+      setExampleError(err?.message || "No se pudo crear la causa de ejemplo.");
+    } finally {
+      setCreatingExample(false);
     }
   };
 
@@ -251,14 +327,40 @@ export default function MisCausasPage() {
             Administra tus causas publicadas, borradores pendientes y rendición de cuentas.
           </p>
         </div>
-        <Link
-          href="/causa/nueva"
-          className="inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl bg-[var(--cta)] hover:bg-[var(--cta-hover)] text-white text-sm font-semibold shadow-lg shadow-[var(--cta)]/20 transition-all active:scale-[0.98] w-full sm:w-auto"
-        >
-          <IconoMas size={16} />
-          <span>Crear una causa</span>
-        </Link>
+        <div className="flex items-center gap-2 flex-wrap">
+          {!hasExampleCause && (
+            <button
+              id="btn-crear-causa-ejemplo"
+              type="button"
+              onClick={handleCreateExample}
+              disabled={creatingExample}
+              className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl border border-[var(--line)] text-xs font-semibold text-[var(--ink-2)] hover:text-[var(--ink)] hover:bg-[var(--hover)] transition-all disabled:opacity-50 cursor-pointer"
+            >
+              {creatingExample ? (
+                <>
+                  <IconoCargando size={13} className="animate-spin" />
+                  <span>Creando...</span>
+                </>
+              ) : (
+                <span>Crear causa de ejemplo</span>
+              )}
+            </button>
+          )}
+          <Link
+            href="/causa/nueva"
+            className="inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl bg-[var(--cta)] hover:bg-[var(--cta-hover)] text-white text-sm font-semibold shadow-lg shadow-[var(--cta)]/20 transition-all active:scale-[0.98]"
+          >
+            <IconoMas size={16} />
+            <span>Crear una causa</span>
+          </Link>
+        </div>
       </div>
+
+      {exampleError && (
+        <div className="p-3 rounded-xl bg-red-500/10 border border-red-500/20 text-xs text-red-500">
+          {exampleError}
+        </div>
+      )}
 
       {/* Tabs */}
       <div
@@ -277,9 +379,9 @@ export default function MisCausasPage() {
               aria-controls={`panel-${tab.key}`}
               id={`tab-${tab.key}`}
               onClick={() => setActiveTab(tab.key)}
-              className={`flex items-center gap-2 px-4 py-3 text-sm font-medium border-b-2 transition-all whitespace-nowrap ${
+              className={`flex items-center gap-2 px-4 py-3 text-sm font-medium border-b-2 transition-all whitespace-nowrap cursor-pointer ${
                 isActive
-                  ? "border-[var(--accent)] text-[var(--ink)]"
+                  ? "border-[var(--accent)] text-[var(--ink)] font-semibold"
                   : "border-transparent text-[var(--ink-3)] hover:text-[var(--ink)] hover:border-[var(--line-strong)]"
               }`}
             >
@@ -309,6 +411,22 @@ export default function MisCausasPage() {
           <div className="py-16 text-center text-sm text-[var(--ink-3)] flex items-center justify-center gap-2">
             <IconoCargando className="animate-spin text-[var(--accent)]" size={20} />
             <span>Cargando causas...</span>
+          </div>
+        ) : pageError ? (
+          <div className="py-16 px-6 text-center rounded-2xl border border-[var(--line)] bg-[var(--surface-solid)]/40 backdrop-blur-md space-y-3">
+            <p className="text-sm font-semibold text-[var(--ink)]">{pageError}</p>
+            <button
+              type="button"
+              onClick={() => {
+                if (user) {
+                  fetchCounts(user.id);
+                  fetchCauses(user.id, activeTab);
+                }
+              }}
+              className="px-4 py-2 text-xs font-semibold rounded-xl bg-[var(--cta)] hover:bg-[var(--accent)] text-white transition-all cursor-pointer"
+            >
+              Reintentar
+            </button>
           </div>
         ) : causes.length === 0 ? (
           <div className="py-16 px-6 text-center rounded-2xl border border-[var(--line)] bg-[var(--surface-solid)]/40 backdrop-blur-md">
@@ -340,7 +458,7 @@ export default function MisCausasPage() {
         ) : (
           <div className="space-y-4">
             {causes.map((cause) => {
-              // Build author actions according to status
+              // Acciones del autor según estado (PLAN.md 6.3)
               let authorActions: React.ReactNode = null;
 
               if (activeTab === "borrador") {
@@ -349,7 +467,7 @@ export default function MisCausasPage() {
                     <button
                       type="button"
                       onClick={() => setDeletingCauseId(cause.id)}
-                      className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-lg bg-rose-500/10 text-rose-400 hover:bg-rose-500/20 border border-rose-500/20 transition-all"
+                      className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-lg bg-rose-500/10 text-rose-400 hover:bg-rose-500/20 border border-rose-500/20 transition-all cursor-pointer"
                     >
                       <IconoBasura size={13} />
                       <span>Eliminar</span>
@@ -364,31 +482,72 @@ export default function MisCausasPage() {
                   </div>
                 );
               } else if (activeTab === "activa") {
+                const hasSupport = Boolean(cause.first_support_confirmed_at);
+
                 authorActions = (
-                  <div className="flex items-center gap-2">
+                  <div className="flex flex-col sm:flex-row sm:items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={() => setSupportModalCause(cause)}
+                      className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-lg bg-[var(--cta)] text-white hover:bg-[var(--accent)] transition-all cursor-pointer shadow-sm"
+                    >
+                      <IconoTarjeta size={13} />
+                      <span>Registrar apoyo</span>
+                    </button>
+
                     <Link
                       href={`/causa/nueva?draftId=${cause.id}&edit=1`}
-                      className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-lg bg-[var(--field)] text-[var(--ink)] hover:bg-[var(--hover)] border border-[var(--line)] transition-all"
+                      className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-lg bg-[var(--field)] text-[var(--ink)] hover:bg-[var(--hover)] border border-[var(--line)] transition-all text-center justify-center"
                     >
                       <span>Editar</span>
                     </Link>
-                    <Link
-                      href={`/causa/${cause.id}/cerrar`}
-                      className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-lg bg-amber-500/10 text-amber-400 hover:bg-amber-500/20 border border-amber-500/20 transition-all"
-                    >
-                      <span>Cerrar causa</span>
-                    </Link>
+
+                    {!hasSupport ? (
+                      <button
+                        type="button"
+                        onClick={() => setDeletingCauseId(cause.id)}
+                        className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-lg bg-rose-500/10 text-rose-400 hover:bg-rose-500/20 border border-rose-500/20 transition-all cursor-pointer justify-center"
+                      >
+                        <IconoBasura size={13} />
+                        <span>Eliminar</span>
+                      </button>
+                    ) : (
+                      <div className="flex items-center gap-2">
+                        <Link
+                          href={`/causa/${cause.id}/cerrar`}
+                          className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-lg bg-amber-500/10 text-amber-400 hover:bg-amber-500/20 border border-amber-500/20 transition-all"
+                        >
+                          <span>Cerrar causa</span>
+                        </Link>
+                        <span
+                          className="text-[10px] text-[var(--ink-3)] italic hidden md:inline-block max-w-[200px] leading-tight"
+                          title="Esta causa ya recibió apoyo confirmado. Por transparencia con quienes ayudaron, no se puede borrar, pero puedes cerrarla y publicar los resultados."
+                        >
+                          Apoyo confirmado (no borrable)
+                        </span>
+                      </div>
+                    )}
                   </div>
                 );
               } else if (activeTab === "cerrada") {
                 authorActions = (
-                  <Link
-                    href={`/causa/${cause.id}/resultados`}
-                    className="inline-flex items-center gap-1.5 px-3.5 py-1.5 text-xs font-semibold rounded-lg bg-emerald-500/15 text-emerald-400 hover:bg-emerald-500/25 border border-emerald-500/30 transition-all"
-                  >
-                    <span>Publicar resultados</span>
-                    <IconoFlechaDerecha size={13} />
-                  </Link>
+                  <div className="flex items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={() => setSupportModalCause(cause)}
+                      className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-lg bg-[var(--field)] text-[var(--ink)] hover:bg-[var(--hover)] border border-[var(--line)] transition-all cursor-pointer"
+                    >
+                      <IconoTarjeta size={13} />
+                      <span>Actualizar apoyo</span>
+                    </button>
+                    <Link
+                      href={`/causa/${cause.id}/resultados`}
+                      className="inline-flex items-center gap-1.5 px-3.5 py-1.5 text-xs font-semibold rounded-lg bg-emerald-500/15 text-emerald-400 hover:bg-emerald-500/25 border border-emerald-500/30 transition-all"
+                    >
+                      <span>Publicar resultados</span>
+                      <IconoFlechaDerecha size={13} />
+                    </Link>
+                  </div>
                 );
               }
 
@@ -414,12 +573,12 @@ export default function MisCausasPage() {
         )}
       </div>
 
-      {/* Modal confirmation for deleting draft */}
+      {/* Modal confirmation for deleting cause (PLAN.md 6.3) */}
       {deletingCauseId && (
         <div
           role="dialog"
           aria-modal="true"
-          aria-labelledby="modal-eliminar-borrador-title"
+          aria-labelledby="modal-eliminar-title"
           className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm animate-in fade-in duration-200"
         >
           <div className="w-full max-w-md rounded-2xl border border-[var(--line)] bg-[var(--surface-solid)] p-6 shadow-2xl space-y-4">
@@ -427,12 +586,12 @@ export default function MisCausasPage() {
               <div className="w-10 h-10 rounded-full bg-rose-500/15 flex items-center justify-center">
                 <IconoAlerta size={20} />
               </div>
-              <h3 id="modal-eliminar-borrador-title" className="text-base font-semibold text-[var(--ink)]">
-                ¿Eliminar este borrador?
+              <h3 id="modal-eliminar-title" className="text-base font-semibold text-[var(--ink)]">
+                ¿Eliminar esta causa?
               </h3>
             </div>
             <p className="text-sm text-[var(--ink-2)] leading-relaxed">
-              Esta acción no se puede deshacer. Se borrarán los datos y archivos multimedia asociados a este borrador.
+              Esta acción no se puede deshacer. Se borrarán los datos y archivos multimedia asociados. Solo es posible eliminar causas que aún no hayan confirmado recepción de apoyo.
             </p>
             {deleteError && (
               <div className="p-3 rounded-lg bg-rose-500/10 border border-rose-500/20 text-xs text-rose-400">
@@ -447,7 +606,7 @@ export default function MisCausasPage() {
                   setDeletingCauseId(null);
                   setDeleteError(null);
                 }}
-                className="px-4 py-2 text-xs font-semibold rounded-xl bg-[var(--field)] text-[var(--ink-2)] hover:text-[var(--ink)] hover:bg-[var(--hover)] transition-all"
+                className="px-4 py-2 text-xs font-semibold rounded-xl bg-[var(--field)] text-[var(--ink-2)] hover:text-[var(--ink)] hover:bg-[var(--hover)] transition-all cursor-pointer"
               >
                 Cancelar
               </button>
@@ -455,7 +614,7 @@ export default function MisCausasPage() {
                 type="button"
                 disabled={isDeleting}
                 onClick={handleDeleteDraft}
-                className="inline-flex items-center gap-2 px-4 py-2 text-xs font-semibold rounded-xl bg-rose-500 hover:bg-rose-600 text-white shadow transition-all disabled:opacity-50"
+                className="inline-flex items-center gap-2 px-4 py-2 text-xs font-semibold rounded-xl bg-rose-500 hover:bg-rose-600 text-white shadow transition-all disabled:opacity-50 cursor-pointer"
               >
                 {isDeleting ? (
                   <>
@@ -463,12 +622,45 @@ export default function MisCausasPage() {
                     <span>Eliminando...</span>
                   </>
                 ) : (
-                  <span>Sí, eliminar borrador</span>
+                  <span>Sí, eliminar</span>
                 )}
               </button>
             </div>
           </div>
         </div>
+      )}
+
+      {/* Modal Registrar Apoyo Recibido (PLAN.md 6.3) */}
+      {supportModalCause && (
+        <ModalRegistrarApoyo
+          isOpen={Boolean(supportModalCause)}
+          onClose={() => setSupportModalCause(null)}
+          causeId={supportModalCause.id}
+          collectionType={supportModalCause.collection_type || "dinero"}
+          currency={supportModalCause.currency || "USD"}
+          currentRaised={supportModalCause.raised_reported || 0}
+          supplies={(supportModalCause.supplies || []).map((s) => ({
+            id: s.id,
+            name: s.name,
+            unit: s.unit,
+            quantity_needed: s.quantity_needed,
+            quantity_received: s.quantity_received || 0,
+          }))}
+          onSuccess={(newAmount, newSupplies) => {
+            setCauses((prev) =>
+              prev.map((c) =>
+                c.id === supportModalCause.id
+                  ? {
+                      ...c,
+                      raised_reported: typeof newAmount === "number" ? newAmount : c.raised_reported,
+                      first_support_confirmed_at: c.first_support_confirmed_at || new Date().toISOString(),
+                      supplies: newSupplies || c.supplies,
+                    }
+                  : c
+              )
+            );
+          }}
+        />
       )}
     </div>
   );

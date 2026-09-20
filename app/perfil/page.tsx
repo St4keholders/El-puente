@@ -3,10 +3,13 @@
 import React, { useState, useEffect, useRef } from "react";
 import { useUser } from "@/lib/hooks/useUser";
 import { createClient } from "@/lib/supabase/client";
+import { useRouter } from "next/navigation";
 import { Glass } from "@/components/ui/Glass";
 import { IconoCheckCirculo, IconoAlerta, IconoCamara } from "@/components/iconos";
 import { parsePhoneNumber, isValidPhoneNumber, CountryCode } from "libphonenumber-js";
 import { getAllCountries } from "@/lib/geo/countries";
+import { comprimirFotoPerfil } from "@/lib/media/comprimir";
+
 
 const PHONE_COUNTRIES = [
   { code: "CO", name: "Colombia", dial: "+57" },
@@ -28,10 +31,12 @@ const PHONE_COUNTRIES = [
 ];
 
 export default function MisDatosPage() {
-  const { user, profile, refreshProfile } = useUser();
+  const router = useRouter();
+  const { user, profile, loading: userLoading, refreshProfile } = useUser();
   const supabase = createClient();
 
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [saveNotice, setSaveNotice] = useState(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
@@ -55,61 +60,92 @@ export default function MisDatosPage() {
   const debounceTimerRef = useRef<any>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
+  // Load private data once user is available
   useEffect(() => {
+    if (userLoading) return; // wait for auth
+
+    if (!user) {
+      router.push("/entrar?next=/perfil");
+      return;
+    }
+
     async function loadPrivateData() {
       if (!user) return;
 
-      const { data: priv } = await supabase
-        .from("profile_private")
-        .select("phone")
-        .eq("id", user.id)
-        .single();
+      // Safety timeout: if something hangs, stop the spinner
+      const timeout = setTimeout(() => {
+        setLoadError("No pudimos cargar tus datos. Comprueba tu conexión.");
+        setLoading(false);
+      }, 10000);
 
-      let dial = "+57";
-      let country = "CO";
-      let numberPart = "";
+      try {
+        const { data: privData, error: privErr } = await supabase
+          .from("profile_private")
+          .select("phone")
+          .eq("id", user.id)
+          .maybeSingle();
 
-      if (priv?.phone) {
-        try {
-          const parsed = parsePhoneNumber(priv.phone);
-          if (parsed) {
-            country = parsed.country || "CO";
-            dial = `+${parsed.countryCallingCode}`;
-            numberPart = parsed.nationalNumber;
-          }
-        } catch {
-          numberPart = priv.phone;
+        let priv = privData;
+        // If the row doesn't exist, create it on the fly
+        if (!priv && !privErr) {
+          await supabase.from("profile_private").upsert({ id: user.id });
+          priv = { phone: null };
         }
+
+        let country = "CO";
+        let numberPart = "";
+
+        if (priv?.phone) {
+          try {
+            const parsed = parsePhoneNumber(priv.phone);
+            if (parsed) {
+              country = parsed.country || "CO";
+              numberPart = parsed.nationalNumber;
+            }
+          } catch {
+            numberPart = priv.phone ?? "";
+          }
+        }
+
+        const initial = {
+          avatar_url: profile?.avatar_url || "",
+          full_name: profile?.full_name || "",
+          username: profile?.username || "",
+          bio: profile?.bio || "",
+          country_code: profile?.country_code || "",
+          city: profile?.city || "",
+          phone_country: country,
+          phone_raw: numberPart,
+        };
+
+        setAvatarUrl(initial.avatar_url);
+        setFullName(initial.full_name);
+        setUsername(initial.username);
+        setBio(initial.bio);
+        setCountryCode(initial.country_code);
+        setCity(initial.city);
+        setPhoneCountry(country);
+        setPhoneRaw(numberPart);
+        setInitialData(initial);
+        setLoadError(null);
+      } catch (err: any) {
+        console.error("[perfil] Error cargando datos privados:", err?.code, err?.message);
+        setLoadError("No pudimos cargar esta sección. Intenta de nuevo.");
+      } finally {
+        clearTimeout(timeout);
+        setLoading(false);
       }
+    }
 
-      const initial = {
-        avatar_url: profile?.avatar_url || "",
-        full_name: profile?.full_name || "",
-        username: profile?.username || "",
-        bio: profile?.bio || "",
-        country_code: profile?.country_code || "",
-        city: profile?.city || "",
-        phone_country: country,
-        phone_raw: numberPart,
-      };
-
-      setAvatarUrl(initial.avatar_url);
-      setFullName(initial.full_name);
-      setUsername(initial.username);
-      setBio(initial.bio);
-      setCountryCode(initial.country_code);
-      setCity(initial.city);
-      setPhoneCountry(country);
-      setPhoneRaw(numberPart);
-
-      setInitialData(initial);
+    if (profile) {
+      loadPrivateData();
+    } else if (!userLoading) {
+      // profile is null even though auth resolved — show error
+      setLoadError("No se encontró tu perfil. Intenta cerrar sesión y volver a entrar.");
       setLoading(false);
     }
+  }, [userLoading, user, profile]);
 
-    if (profile && user) {
-      loadPrivateData();
-    }
-  }, [profile, user]);
 
   // Track if changes were made
   const hasChanges = initialData && (
@@ -172,11 +208,12 @@ export default function MisDatosPage() {
     setErrorMsg(null);
 
     try {
+      const compressed = await comprimirFotoPerfil(file);
       const path = `${user.id}/avatar.webp`;
       const { error: uploadError } = await supabase.storage
         .from("avatares")
-        .upload(path, file, {
-          contentType: file.type,
+        .upload(path, compressed.file, {
+          contentType: "image/webp",
           upsert: true,
         });
 
@@ -313,10 +350,26 @@ export default function MisDatosPage() {
     }
   };
 
-  if (loading) {
+  if (loading || userLoading) {
     return (
-      <div className="flex min-h-[400px] items-center justify-center text-sm text-[var(--ink-2)]">
-        Cargando tus datos...
+      <div className="flex min-h-[400px] flex-col items-center justify-center gap-3 text-sm text-[var(--ink-2)]">
+        <div className="h-5 w-5 animate-spin rounded-full border-2 border-[var(--accent)] border-t-transparent" />
+        <span>Cargando tus datos...</span>
+      </div>
+    );
+  }
+
+  if (loadError) {
+    return (
+      <div className="flex min-h-[400px] flex-col items-center justify-center gap-4 text-sm">
+        <IconoAlerta size={28} className="text-red-500" />
+        <p className="text-[var(--ink-2)] text-center max-w-xs">{loadError}</p>
+        <button
+          onClick={() => { setLoading(true); setLoadError(null); }}
+          className="px-4 py-2 rounded-xl bg-[var(--cta)] text-white text-xs font-semibold hover:bg-[var(--accent)] transition-colors"
+        >
+          Reintentar
+        </button>
       </div>
     );
   }
