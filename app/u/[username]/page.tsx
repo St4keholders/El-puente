@@ -5,6 +5,9 @@ import { createClient } from "@/lib/supabase/server";
 import { UserProfileView } from "@/components/profile/UserProfileView";
 import mundoData from "@/lib/geo/mundo.json";
 
+export const dynamic = "force-dynamic";
+export const revalidate = 0;
+
 interface UserProfilePageProps {
   params: Promise<{ username: string }>;
 }

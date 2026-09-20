@@ -3,6 +3,9 @@ import { createClient } from "@/lib/supabase/server";
 import { fetchFeedPage, FeedFilters } from "@/lib/feed/fetchFeed";
 import { FeedView } from "@/components/feed/FeedView";
 
+export const dynamic = "force-dynamic";
+export const revalidate = 0;
+
 export const metadata: Metadata = {
   title: "Causas Cerradas | Puente",
   description:

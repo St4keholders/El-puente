@@ -3,6 +3,9 @@ import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { BienvenidaForm } from "./BienvenidaForm";
 
+export const dynamic = "force-dynamic";
+export const revalidate = 0;
+
 interface BienvenidaPageProps {
   searchParams: Promise<{ next?: string }>;
 }

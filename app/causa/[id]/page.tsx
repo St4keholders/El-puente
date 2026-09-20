@@ -4,6 +4,9 @@ import { createClient } from "@/lib/supabase/server";
 import { CauseDetailView } from "@/components/cause/CauseDetailView";
 import mundoData from "@/lib/geo/mundo.json";
 
+export const dynamic = "force-dynamic";
+export const revalidate = 0;
+
 interface CausePageProps {
   params: Promise<{ id: string }>;
 }

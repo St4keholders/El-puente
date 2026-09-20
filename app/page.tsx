@@ -2,6 +2,7 @@ import { createClient } from "@/lib/supabase/server";
 import { GlobeHero } from "@/components/planet/GlobeHero";
 
 export const dynamic = "force-dynamic";
+export const revalidate = 0;
 
 export default async function HomePage() {
   const supabase = await createClient();
