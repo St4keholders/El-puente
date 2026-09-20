@@ -15,6 +15,11 @@ const nextConfig: NextConfig = {
       },
     ],
   },
+  experimental: {
+    serverActions: {
+      bodySizeLimit: "50mb",
+    },
+  },
   devIndicators: {
     position: "bottom-right",
   },

@@ -32,7 +32,7 @@ import { getUserStorageUsage, MAX_USER_STORAGE_BYTES } from "@/lib/media";
 import { defaultGeocoder, GeocodedCity } from "@/lib/geo/geocoder";
 import mundoData from "@/lib/geo/mundo.json";
 import { CauseCard } from "@/components/feed/CauseCard";
-import { initDraftAction } from "./actions";
+import { initDraftAction, uploadCauseMediaAction, deleteCauseMediaAction } from "./actions";
 import type { Database } from "@/lib/database.types";
 import { parsePhoneNumberFromString, type CountryCode } from "libphonenumber-js";
 
@@ -422,20 +422,48 @@ function NuevaCausaContent({
   };
 
   // Media file handling
+  const [isDragging, setIsDragging] = useState(false);
 
-  const handleFileSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleDragOver = (e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setIsDragging(true);
+  };
+
+  const handleDragLeave = (e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setIsDragging(false);
+  };
+
+  const handleDrop = (e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setIsDragging(false);
+    const files = Array.from(e.dataTransfer.files || []);
+    if (files.length > 0) {
+      processFiles(files);
+    }
+  };
+
+  const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = Array.from(e.target.files || []);
-    if (!files.length || !causeId || !user) return;
+    if (files.length > 0) {
+      processFiles(files);
+    }
+  };
 
-    // Reset input
+  const processFiles = async (files: File[]) => {
+    if (!files.length || !causeId || !user) return;
     if (fileInputRef.current) fileInputRef.current.value = "";
 
     const currentImages = mediaList.filter((m) => m.kind === "imagen").length;
     const currentVideos = mediaList.filter((m) => m.kind === "video").length;
 
     for (const file of files) {
-      const isVideo = file.type.startsWith("video/");
-      const isImage = file.type.startsWith("image/");
+      const fileName = file.name || "";
+      const isVideo = file.type.startsWith("video/") || /\.(mp4|webm|mov|m4v|mkv|avi)$/i.test(fileName);
+      const isImage = file.type.startsWith("image/") || /\.(jpe?g|png|webp|gif|avif|heic|heif|bmp|svg)$/i.test(fileName);
 
       if (!isImage && !isVideo) continue;
 
@@ -448,21 +476,16 @@ function NuevaCausaContent({
         continue;
       }
 
-      // Check 60 MB storage quota per user (PLAN.md 7.3)
-      try {
-        const currentBytes = await getUserStorageUsage(user.id);
-        if (currentBytes + file.size > MAX_USER_STORAGE_BYTES) {
-          alert("Llegaste al límite de archivos. Elimina algo para subir más.");
-          continue;
-        }
-      } catch {
-        // Non-blocking quota check failure
-      }
-
       const tempId = crypto.randomUUID();
       const nextPos = mediaList.length;
+      let previewUrl = "";
+      try {
+        previewUrl = URL.createObjectURL(file);
+      } catch {
+        previewUrl = "";
+      }
 
-      // Add temporary placeholder
+      // Add temporary placeholder with instant local preview
       setMediaList((prev) => [
         ...prev,
         {
@@ -470,156 +493,60 @@ function NuevaCausaContent({
           storage_path: "",
           kind: isVideo ? "video" : "imagen",
           position: nextPos,
-          previewUrl: URL.createObjectURL(file),
+          previewUrl,
           isUploading: true,
         },
       ]);
 
       try {
-        if (isVideo) {
-          const validated = await validarVideo(file);
-          const ext = file.name.split(".").pop() || "mp4";
-          const fileUuid = crypto.randomUUID();
-          const storagePath = `${user.id}/${causeId}/${fileUuid}.${ext}`;
-          const posterPath = `${user.id}/${causeId}/${fileUuid}_poster.webp`;
+        let fileToUpload: File | Blob = file;
+        let width: number | null = null;
+        let height: number | null = null;
 
-          // Generate poster
-          let posterBytes = 0;
+        if (isImage) {
           try {
-            const poster = await generarPortadaVideo(file);
-            posterBytes = poster.bytes;
-            await supabase.storage
-              .from("causas-imagenes")
-              .upload(posterPath, poster.blob, {
-                cacheControl: "31536000",
-                contentType: "image/webp",
-                upsert: false,
-              });
+            // Compress on canvas if possible (removes EXIF, scales to max 1600px)
+            const compressed = await comprimirFotoCausa(file);
+            fileToUpload = compressed.fullFile;
+            width = compressed.width;
+            height = compressed.height;
           } catch (e) {
-            console.warn("Could not generate poster frame:", e);
+            console.warn("Canvas compression skipped, uploading original file:", e);
+            fileToUpload = file;
           }
-
-          const { error: uploadErr } = await supabase.storage
-            .from("causas-videos")
-            .upload(storagePath, validated.file, {
-              cacheControl: "31536000",
-              upsert: false,
-            });
-
-          if (uploadErr) throw uploadErr;
-
-          const { data: dbItem, error: dbErr } = await supabase
-            .from("cause_media")
-            .insert({
-              cause_id: causeId,
-              owner_id: user.id,
-              storage_path: storagePath,
-              bucket: "causas-videos",
-              kind: "video",
-              phase: "causa",
-              position: nextPos,
-              width: validated.width,
-              height: validated.height,
-              duration_seconds: validated.duration,
-              bytes: validated.bytes + posterBytes,
-              thumb_path: posterPath,
-            })
-            .select()
-            .single();
-
-          if (dbErr) {
-            // Cleanup on DB error
-            await supabase.storage.from("causas-videos").remove([storagePath]);
-            await supabase.storage.from("causas-imagenes").remove([posterPath]);
-            throw dbErr;
-          }
-
-          setMediaList((prev) =>
-            prev.map((m) =>
-              m.id === tempId
-                ? {
-                    id: dbItem.id,
-                    storage_path: storagePath,
-                    kind: "video",
-                    position: nextPos,
-                    width: validated.width,
-                    height: validated.height,
-                    previewUrl: m.previewUrl,
-                    isUploading: false,
-                  }
-                : m
-            )
-          );
-        } else {
-          // Compress image to 1600px + 400px thumbnail WebP (PLAN.md 7.2)
-          const fileUuid = crypto.randomUUID();
-          const compressed = await comprimirFotoCausa(file);
-          const storagePath = `${user.id}/${causeId}/${fileUuid}.webp`;
-          const thumbPath = `${user.id}/${causeId}/${fileUuid}_400.webp`;
-
-          const { error: uploadErr } = await supabase.storage
-            .from("causas-imagenes")
-            .upload(storagePath, compressed.fullBlob, {
-              cacheControl: "31536000",
-              contentType: "image/webp",
-              upsert: false,
-            });
-
-          if (uploadErr) throw uploadErr;
-
-          // Upload thumbnail
-          const { error: thumbErr } = await supabase.storage
-            .from("causas-imagenes")
-            .upload(thumbPath, compressed.thumbBlob, {
-              cacheControl: "31536000",
-              contentType: "image/webp",
-              upsert: false,
-            });
-
-          if (thumbErr) {
-            console.warn("Error uploading thumbnail:", thumbErr);
-          }
-
-          const { data: dbItem, error: dbErr } = await supabase
-            .from("cause_media")
-            .insert({
-              cause_id: causeId,
-              owner_id: user.id,
-              storage_path: storagePath,
-              bucket: "causas-imagenes",
-              kind: "imagen",
-              phase: "causa",
-              position: nextPos,
-              width: compressed.width,
-              height: compressed.height,
-              bytes: compressed.bytes,
-              thumb_path: thumbPath,
-            })
-            .select()
-            .single();
-
-          if (dbErr) {
-            await supabase.storage.from("causas-imagenes").remove([storagePath, thumbPath]);
-            throw dbErr;
-          }
-
-          setMediaList((prev) =>
-            prev.map((m) =>
-              m.id === tempId
-                ? {
-                    id: dbItem.id,
-                    storage_path: storagePath,
-                    kind: "imagen",
-                    position: nextPos,
-                    width: compressed.width,
-                    height: compressed.height,
-                    previewUrl: compressed.previewUrl,
-                    isUploading: false,
-                  }
-                : m
-            )
-          );
         }
+
+        const formData = new FormData();
+        formData.append("causeId", causeId);
+        formData.append("file", fileToUpload);
+        formData.append("kind", isVideo ? "video" : "imagen");
+        formData.append("position", String(nextPos));
+        if (width) formData.append("width", String(width));
+        if (height) formData.append("height", String(height));
+
+        const res = await uploadCauseMediaAction(formData);
+
+        if (!res.success || !res.mediaItem) {
+          throw new Error(res.error || "No se pudo subir el archivo.");
+        }
+
+        const dbItem = res.mediaItem;
+        setMediaList((prev) =>
+          prev.map((m) =>
+            m.id === tempId
+              ? {
+                  id: dbItem.id,
+                  storage_path: dbItem.storage_path,
+                  kind: dbItem.kind,
+                  position: nextPos,
+                  width: dbItem.width,
+                  height: dbItem.height,
+                  previewUrl: m.previewUrl,
+                  isUploading: false,
+                }
+              : m
+          )
+        );
       } catch (err: any) {
         console.error("Upload error:", err);
         setMediaList((prev) =>
@@ -641,20 +568,10 @@ function NuevaCausaContent({
     const item = mediaList[index];
     if (!item) return;
 
-    if (item.id && !item.id.startsWith("temp-")) {
-      await supabase.from("cause_media").delete().eq("id", item.id);
-    }
+    setMediaList((prev) => prev.filter((_, i) => i !== index));
 
-    const updated = mediaList.filter((_, i) => i !== index);
-    // Reindex positions
-    const reindexed = updated.map((m, i) => ({ ...m, position: i }));
-    setMediaList(reindexed);
-
-    // Update positions in DB
-    for (const m of reindexed) {
-      if (m.id) {
-        await supabase.from("cause_media").update({ position: m.position }).eq("id", m.id);
-      }
+    if (item.id && causeId) {
+      deleteCauseMediaAction(item.id, causeId).catch(() => {});
     }
   };
 
@@ -1127,7 +1044,7 @@ function NuevaCausaContent({
   const hasValidProfile = Boolean(profile?.full_name && profile.full_name.trim().length >= 2);
 
   return (
-    <div className="max-w-4xl mx-auto px-4 py-8">
+    <div className="max-w-4xl mx-auto px-4 pt-28 md:pt-32 pb-24">
       {/* Wizard Header & Stepper */}
       <div className="mb-8 text-center">
         <h1 className="text-2xl sm:text-3xl font-bold text-text-primary tracking-tight">
@@ -1149,18 +1066,26 @@ function NuevaCausaContent({
             <button
               key={s.num}
               onClick={() => setCurrentStep(s.num)}
-              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-semibold transition-all ${
+              className={`flex items-center gap-1.5 px-3.5 py-1.5 rounded-full text-xs font-semibold transition-all cursor-pointer ${
                 currentStep === s.num
-                  ? "bg-accent text-white shadow-lg shadow-accent/20"
+                  ? "bg-[var(--cta)] text-white shadow-md shadow-blue-500/25 ring-2 ring-[var(--cta)]/30 font-bold"
                   : currentStep > s.num
-                  ? "bg-glass-tint text-accent border border-accent/30"
-                  : "bg-glass-surface text-text-secondary opacity-60"
+                  ? "bg-[var(--hover)] text-[var(--cta)] border border-[var(--cta)]/30 font-medium"
+                  : "bg-[var(--field)] border border-[var(--line)] text-[var(--ink-2)] hover:text-[var(--ink)] hover:bg-[var(--hover)]"
               }`}
             >
-              <span className="w-4 h-4 rounded-full flex items-center justify-center text-[10px] bg-black/20">
+              <span
+                className={`w-4 h-4 rounded-full flex items-center justify-center text-[10px] ${
+                  currentStep === s.num
+                    ? "bg-white/20 text-white"
+                    : currentStep > s.num
+                    ? "bg-[var(--cta)] text-white"
+                    : "bg-black/10 dark:bg-white/10 text-[var(--ink-2)]"
+                }`}
+              >
                 {currentStep > s.num ? <IconoCheck size={10} /> : s.num}
               </span>
-              <span className="hidden md:inline">{s.label}</span>
+              <span className="hidden sm:inline">{s.label}</span>
             </button>
           ))}
         </div>
@@ -1204,9 +1129,8 @@ function NuevaCausaContent({
             <div>
               <h2 className="text-xl font-bold text-text-primary">Paso 1 · Fotos y Videos</h2>
               <p className="text-xs text-text-secondary mt-1">
-                Sube entre 2 y 10 fotos (JPG, PNG, WebP) y hasta 2 videos (máximo 90s y 50 MB).
-                La primera imagen será la portada. Las fotos se optimizan y se borran sus metadatos
-                EXIF/GPS por privacidad.
+                Puedes subir fotos en cualquier tamaño, proporción (vertical, horizontal o cuadrada) o resolución.
+                El sistema las optimiza automáticamente. La primera foto será la portada de tu causa en el planeta.
               </p>
             </div>
 
@@ -1223,16 +1147,24 @@ function NuevaCausaContent({
             {/* Drag and drop upload zone */}
             <div
               onClick={() => fileInputRef.current?.click()}
-              className="border-2 border-dashed border-glass-tint hover:border-accent/60 rounded-3xl p-8 text-center cursor-pointer transition-colors bg-glass-surface flex flex-col items-center justify-center group"
+              onDragOver={handleDragOver}
+              onDragEnter={handleDragOver}
+              onDragLeave={handleDragLeave}
+              onDrop={handleDrop}
+              className={`border-2 border-dashed rounded-3xl p-8 text-center cursor-pointer transition-all flex flex-col items-center justify-center group ${
+                isDragging
+                  ? "border-[var(--cta)] bg-[var(--hover)] scale-[1.01]"
+                  : "border-[var(--line-strong)] hover:border-[var(--cta)] bg-[var(--field)]"
+              }`}
             >
-              <div className="w-14 h-14 rounded-2xl bg-accent/10 flex items-center justify-center text-accent mb-3 group-hover:scale-110 transition-transform">
+              <div className="w-14 h-14 rounded-2xl bg-[var(--hover)] flex items-center justify-center text-[var(--cta)] mb-3 group-hover:scale-110 transition-transform">
                 <IconoSubir size={28} />
               </div>
               <p className="font-semibold text-text-primary text-sm">
-                Toca o arrastra tus archivos aquí
+                Toca o arrastra tus fotos aquí
               </p>
               <p className="text-xs text-text-secondary mt-1">
-                Al menos 2 fotos requeridas para publicar
+                Acepta cualquier tamaño, proporción y resolución (JPG, PNG, WebP)
               </p>
             </div>
 
@@ -1254,7 +1186,7 @@ function NuevaCausaContent({
                         <video
                           src={
                             item.previewUrl ||
-                            `${process.env.NEXT_PUBLIC_SUPABASE_URL}/storage/v1/object/public/causas-videos/${item.storage_path}`
+                            `https://aeqqnzqcxurnpbkkahvl.supabase.co/storage/v1/object/public/causas-videos/${item.storage_path}`
                           }
                           className="w-full h-full object-cover"
                         />
@@ -1262,7 +1194,7 @@ function NuevaCausaContent({
                         <img
                           src={
                             item.previewUrl ||
-                            `${process.env.NEXT_PUBLIC_SUPABASE_URL}/storage/v1/object/public/causas-imagenes/${item.storage_path}`
+                            `https://aeqqnzqcxurnpbkkahvl.supabase.co/storage/v1/object/public/causas-imagenes/${item.storage_path}`
                           }
                           alt={`Medio ${idx + 1}`}
                           className="w-full h-full object-cover"
@@ -1271,7 +1203,7 @@ function NuevaCausaContent({
 
                       {/* Cover badge */}
                       {idx === 0 && (
-                        <span className="absolute top-2 left-2 px-2 py-0.5 rounded-md bg-accent text-white text-[10px] font-bold z-10 shadow-md">
+                        <span className="absolute top-2 left-2 px-2 py-0.5 rounded-md bg-[var(--cta)] text-white text-[10px] font-bold z-10 shadow-md">
                           Portada
                         </span>
                       )}
@@ -1285,25 +1217,42 @@ function NuevaCausaContent({
 
                       {/* Uploading overlay */}
                       {item.isUploading && (
-                        <div className="absolute inset-0 bg-black/60 flex flex-col items-center justify-center text-white z-20">
-                          <IconoCargando size={24} className="animate-spin mb-1 text-accent" />
-                          <span className="text-[10px]">Optimizando...</span>
+                        <div className="absolute inset-0 bg-black/70 flex flex-col items-center justify-center text-white z-20">
+                          <IconoCargando size={24} className="animate-spin mb-1 text-[var(--cta)]" />
+                          <span className="text-[10px] font-medium">Subiendo foto...</span>
+                        </div>
+                      )}
+
+                      {/* Upload error overlay */}
+                      {item.error && !item.isUploading && (
+                        <div className="absolute inset-0 bg-red-950/85 p-2 flex flex-col items-center justify-center text-center text-white z-20">
+                          <IconoAlerta size={18} className="text-red-400 mb-1" />
+                          <span className="text-[10px] text-red-200 line-clamp-2">{item.error}</span>
+                          <button
+                            type="button"
+                            onClick={() => handleRemoveMedia(idx)}
+                            className="mt-1.5 px-2 py-0.5 rounded bg-red-600/70 hover:bg-red-600 text-[10px] text-white cursor-pointer"
+                          >
+                            Quitar
+                          </button>
                         </div>
                       )}
 
                       {/* Action buttons */}
                       <div className="absolute top-2 right-2 flex flex-col gap-1 z-10 opacity-90 group-hover:opacity-100 transition-opacity">
                         <button
+                          type="button"
                           onClick={() => handleRemoveMedia(idx)}
-                          className="p-1.5 rounded-full bg-red-500/80 hover:bg-red-500 text-white"
+                          className="p-1.5 rounded-full bg-red-500/80 hover:bg-red-500 text-white cursor-pointer"
                           title="Eliminar"
                         >
                           <IconoBasura size={13} />
                         </button>
                         {idx > 0 && (
                           <button
+                            type="button"
                             onClick={() => handleMoveMedia(idx, "up")}
-                            className="p-1.5 rounded-full bg-black/60 hover:bg-black/80 text-white"
+                            className="p-1.5 rounded-full bg-black/60 hover:bg-black/80 text-white cursor-pointer"
                             title="Mover arriba"
                           >
                             <IconoFlechaArriba size={13} />
@@ -1311,8 +1260,9 @@ function NuevaCausaContent({
                         )}
                         {idx < mediaList.length - 1 && (
                           <button
+                            type="button"
                             onClick={() => handleMoveMedia(idx, "down")}
-                            className="p-1.5 rounded-full bg-black/60 hover:bg-black/80 text-white"
+                            className="p-1.5 rounded-full bg-black/60 hover:bg-black/80 text-white cursor-pointer"
                             title="Mover abajo"
                           >
                             <IconoFlechaAbajo size={13} />
@@ -1329,15 +1279,15 @@ function NuevaCausaContent({
             <div
               className={`p-3 rounded-2xl flex items-center gap-2 text-xs ${
                 hasMinImages
-                  ? "bg-emerald-500/10 text-emerald-400 border border-emerald-500/20"
-                  : "bg-amber-500/10 text-amber-400 border border-amber-500/20"
+                  ? "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20"
+                  : "bg-blue-500/10 text-blue-600 dark:text-blue-400 border border-blue-500/20"
               }`}
             >
-              {hasMinImages ? <IconoCheckCirculo size={16} /> : <IconoAlerta size={16} />}
+              {hasMinImages ? <IconoCheckCirculo size={16} /> : <IconoInfo size={16} />}
               <span>
                 {hasMinImages
-                  ? "¡Listo! Cumples con el requisito mínimo de 2 fotos."
-                  : "Recuerda: se requieren mínimo 2 fotos para activar la causa."}
+                  ? `¡Listo! Cumples con el requisito de fotos (${mediaList.filter((m) => m.kind === "imagen").length} añadidas).`
+                  : "Puedes avanzar con el botón 'Siguiente' para completar tu historia y ubicación. Se te pedirán mínimo 2 fotos antes de publicar en el Paso 5."}
               </span>
             </div>
           </div>
@@ -2322,23 +2272,24 @@ function NuevaCausaContent({
         )}
 
         {/* Wizard Navigation Footer */}
-        <div className="mt-8 pt-6 border-t border-glass-tint flex items-center justify-between">
+        <div className="mt-8 pt-6 border-t border-[var(--line)] flex items-center justify-between">
           <button
             type="button"
             onClick={() => setCurrentStep((prev) => Math.max(1, prev - 1))}
             disabled={currentStep === 1}
-            className="px-4 py-2 rounded-full glass-surface text-text-secondary hover:text-text-primary disabled:opacity-30 text-xs font-semibold flex items-center gap-1.5 transition-all"
+            className="px-5 py-2.5 rounded-full border border-[var(--line)] bg-[var(--field)] text-[var(--ink-2)] hover:text-[var(--ink)] hover:bg-[var(--hover)] disabled:opacity-30 text-sm font-semibold flex items-center gap-2 transition-all cursor-pointer disabled:cursor-not-allowed"
           >
-            <IconoFlechaIzquierda size={16} /> Anterior
+            <IconoFlechaIzquierda size={16} /> <span>Anterior</span>
           </button>
 
           {currentStep < 5 ? (
             <button
               type="button"
               onClick={() => setCurrentStep((prev) => Math.min(5, prev + 1))}
-              className="px-5 py-2 rounded-full bg-accent text-white text-xs font-semibold flex items-center gap-1.5 hover:bg-accent/90 shadow-md shadow-accent/20 transition-all"
+              className="px-6 py-2.5 rounded-full bg-[var(--cta)] text-white text-sm font-semibold flex items-center gap-2 hover:brightness-110 shadow-md shadow-blue-600/20 transition-all active:scale-95 cursor-pointer"
             >
-              Siguiente <IconoFlechaDerecha size={16} />
+              <span>Siguiente</span>
+              <IconoFlechaDerecha size={16} />
             </button>
           ) : null}
         </div>
