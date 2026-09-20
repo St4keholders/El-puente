@@ -55,9 +55,7 @@ export default function MisDatosPage() {
   // Original state for change tracking
   const [initialData, setInitialData] = useState<any>(null);
 
-  // Username checking
-  const [usernameStatus, setUsernameStatus] = useState<"available" | "taken" | "invalid" | null>(null);
-  const debounceTimerRef = useRef<any>(null);
+  const [copiedId, setCopiedId] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   // Load private data once user is available
@@ -201,30 +199,6 @@ export default function MisDatosPage() {
     return () => window.removeEventListener("beforeunload", handleBeforeUnload);
   }, [hasChanges]);
 
-  // Check username in real time
-  const handleUsernameChange = (val: string) => {
-    const trimmed = val.toLowerCase().replace(/\s+/g, "_");
-    setUsername(trimmed);
-
-    if (trimmed === initialData?.username) {
-      setUsernameStatus(null);
-      return;
-    }
-
-    if (!/^[a-z0-9_]{3,24}$/.test(trimmed)) {
-      setUsernameStatus("invalid");
-      return;
-    }
-
-    clearTimeout(debounceTimerRef.current);
-    debounceTimerRef.current = setTimeout(async () => {
-      const { data: isAvail } = await supabase.rpc("username_available", {
-        p_username: trimmed,
-      });
-      setUsernameStatus(isAvail ? "available" : "taken");
-    }, 400);
-  };
-
   const handleAvatarUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file || !user) return;
@@ -276,7 +250,6 @@ export default function MisDatosPage() {
     setCity(initialData.city);
     setPhoneCountry(initialData.phone_country);
     setPhoneRaw(initialData.phone_raw);
-    setUsernameStatus(null);
     setErrorMsg(null);
   };
 
@@ -289,16 +262,6 @@ export default function MisDatosPage() {
 
     if (fullName.trim().length < 2) {
       setErrorMsg("Escribe tu nombre completo (mínimo 2 caracteres).");
-      return;
-    }
-
-    if (usernameStatus === "invalid" || !/^[a-z0-9_]{3,24}$/.test(username.trim())) {
-      setErrorMsg("Solo minúsculas, números y _, entre 3 y 24 caracteres.");
-      return;
-    }
-
-    if (usernameStatus === "taken") {
-      setErrorMsg("Ese usuario ya lo tomó otra persona. Prueba con otro.");
       return;
     }
 
@@ -369,7 +332,6 @@ export default function MisDatosPage() {
         phone_raw: phoneRaw,
       });
 
-      setUsernameStatus(null);
       setSaveNotice(true);
       setTimeout(() => setSaveNotice(false), 4000);
     } catch (err: any) {
@@ -514,51 +476,48 @@ export default function MisDatosPage() {
             />
           </div>
 
-          {/* 3. Nombre de Usuario (Público) */}
+          {/* 3. Tu ID en Puente (Público - Asignado para compartir) */}
           <div>
             <div className="flex items-center justify-between mb-1.5">
               <label
                 htmlFor="profile_username"
                 className="block text-xs font-semibold uppercase tracking-wider text-[var(--ink-2)]"
               >
-                Nombre de usuario
+                Tu ID en Puente
               </label>
-              <div className="flex items-center gap-2">
-                {usernameStatus === "available" && (
-                  <span className="text-[11px] text-emerald-500 font-medium">
-                    Disponible
-                  </span>
-                )}
-                {usernameStatus === "taken" && (
-                  <span className="text-[11px] text-rose-500 font-medium">
-                    Ya está en uso
-                  </span>
-                )}
-                {usernameStatus === "invalid" && (
-                  <span className="text-[11px] text-amber-500 font-medium">
-                    Solo minúsculas, números y _
-                  </span>
-                )}
-                <span className="text-[10px] font-mono px-2 py-0.5 rounded-full bg-emerald-500/10 text-emerald-600 font-semibold border border-emerald-500/20">
-                  Público
-                </span>
-              </div>
-            </div>
-            <div className="relative">
-              <span className="absolute left-3.5 top-1/2 -translate-y-1/2 text-sm font-mono text-[var(--ink-3)]">
-                @
+              <span className="text-[10px] font-mono px-2 py-0.5 rounded-full bg-emerald-500/10 text-emerald-600 font-semibold border border-emerald-500/20">
+                Público
               </span>
-              <input
-                id="profile_username"
-                type="text"
-                value={username}
-                onChange={(e) => handleUsernameChange(e.target.value)}
-                required
-                minLength={3}
-                maxLength={24}
-                className="w-full rounded-xl border border-[var(--line)] bg-[var(--field)] py-2.5 pl-8 pr-3.5 text-sm font-mono text-[var(--ink)] placeholder-[var(--ink-3)] focus:border-[var(--accent)] focus:outline-none focus:ring-1 focus:ring-[var(--accent)] transition-all"
-              />
             </div>
+            <div className="flex items-center gap-2">
+              <div className="relative flex-1">
+                <span className="absolute left-3.5 top-1/2 -translate-y-1/2 text-sm font-mono text-[var(--ink-3)]">
+                  @
+                </span>
+                <input
+                  id="profile_username"
+                  type="text"
+                  readOnly
+                  disabled
+                  value={username}
+                  className="w-full rounded-xl border border-[var(--line)] bg-[var(--track)] py-2.5 pl-8 pr-3.5 text-sm font-mono text-[var(--ink)] opacity-90 cursor-not-allowed select-all"
+                />
+              </div>
+              <button
+                type="button"
+                onClick={() => {
+                  navigator.clipboard.writeText(username ? `@${username}` : "");
+                  setCopiedId(true);
+                  setTimeout(() => setCopiedId(false), 2000);
+                }}
+                className="px-3.5 py-2.5 rounded-xl border border-[var(--line)] bg-[var(--surface-solid)] text-xs font-semibold text-[var(--ink)] hover:bg-[var(--hover)] transition-colors cursor-pointer flex-shrink-0"
+              >
+                {copiedId ? "¡Copiado!" : "Copiar ID"}
+              </button>
+            </div>
+            <p className="mt-1 text-[11px] text-[var(--ink-3)]">
+              Identificador único para compartir y encontrarte en la red social.
+            </p>
           </div>
 
           {/* 4. Biografía (Público) */}

@@ -38,29 +38,37 @@ export function CountryPanel({
       setLoading(true);
       const supabase = createClient();
 
-      const { data, count, error } = await supabase
-        .from("causes")
-        .select(
-          `
-          *,
-          author:profiles(*),
-          cause_media(*)
-        `,
-          { count: "exact" }
-        )
-        .eq("status", "activa")
-        .eq("country_code", countryCode)
-        .order("published_at", { ascending: false })
-        .limit(4);
+      try {
+        const { data, count, error } = await supabase
+          .from("causes")
+          .select(
+            `
+            *,
+            author:profiles!causes_author_id_fkey(*),
+            cause_media(*)
+          `,
+            { count: "exact" }
+          )
+          .eq("status", "activa")
+          .eq("country_code", countryCode)
+          .order("published_at", { ascending: false })
+          .limit(4);
 
-      if (!error && data) {
-        setCauses(data as any);
-        setTotalCount(count ?? data.length);
-      } else {
+        if (!error && data) {
+          setCauses(data as any);
+          setTotalCount(count ?? data.length);
+        } else {
+          if (error) console.error("Error fetching country causes:", error);
+          setCauses([]);
+          setTotalCount(0);
+        }
+      } catch (err) {
+        console.error("Exception fetching country causes:", err);
         setCauses([]);
         setTotalCount(0);
+      } finally {
+        setLoading(false);
       }
-      setLoading(false);
     };
 
     fetchCountryCauses();

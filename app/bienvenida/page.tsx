@@ -6,13 +6,10 @@ import Link from "next/link";
 import { Glass } from "@/components/ui/Glass";
 import { createClient } from "@/lib/supabase/client";
 import {
-  copyGoogleAvatarToStorage,
   setOnboardingCompletedCookie,
-  clearOnboardingCookie,
   signOutAction,
 } from "@/lib/actions/auth";
 import {
-  IconoCheckCirculo,
   IconoAlerta,
   IconoFoto,
   IconoMarcador,
@@ -43,21 +40,6 @@ const PHONE_COUNTRIES = [
   { code: "PY", name: "Paraguay", dial: "+595" },
 ];
 
-function cleanUsernameSuggestion(fullName: string): string {
-  if (!fullName) return "usuario";
-  const normalized = fullName
-    .normalize("NFD")
-    .replace(/[\u0300-\u036f]/g, "")
-    .toLowerCase()
-    .trim();
-  const parts = normalized.split(/\s+/).filter(Boolean);
-  if (parts.length === 1) {
-    return parts[0].replace(/[^a-z0-9_]/g, "").slice(0, 20) || "usuario";
-  }
-  const candidate = `${parts[0]}_${parts[1]}`.replace(/[^a-z0-9_]/g, "").slice(0, 20);
-  return candidate.length >= 3 ? candidate : "usuario";
-}
-
 function BienvenidaContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -67,7 +49,7 @@ function BienvenidaContent() {
   const [submitting, setSubmitting] = useState(false);
   const [user, setUser] = useState<any>(null);
 
-  // Avatar state (PLAN.md Section 3: 96px circle, cambiar / quitar foto)
+  // Avatar state
   const [avatarUrl, setAvatarUrl] = useState<string | null>(null);
   const [avatarPreview, setAvatarPreview] = useState<string | null>(null);
   const [avatarFile, setAvatarFile] = useState<File | null>(null);
@@ -77,14 +59,12 @@ function BienvenidaContent() {
 
   // Form state
   const [fullName, setFullName] = useState("");
-  const [username, setUsername] = useState("");
-  const [usernameStatus, setUsernameStatus] = useState<"checking" | "available" | "taken" | "invalid" | null>(null);
   const [phoneCountry, setPhoneCountry] = useState("CO");
   const [phoneNumber, setPhoneNumber] = useState("");
   const [acceptTerms, setAcceptTerms] = useState(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
 
-  // Location state (PLAN.md Section 3: País y ciudad opcionales con mismo selector de publicar)
+  // Location state
   const [countryCode, setCountryCode] = useState("CO");
   const [city, setCity] = useState("");
   const [citySearchQuery, setCitySearchQuery] = useState("");
@@ -101,13 +81,12 @@ function BienvenidaContent() {
     }>;
   }, []);
 
-  const debounceTimerRef = useRef<any>(null);
   const cityDebounceRef = useRef<any>(null);
 
   useEffect(() => {
     const safetyTimer = setTimeout(() => {
       setLoading(false);
-    }, 5000);
+    }, 4000);
 
     async function loadUser() {
       try {
@@ -140,7 +119,8 @@ function BienvenidaContent() {
           .maybeSingle();
 
         if (profile?.onboarding_completed_at) {
-          await setOnboardingCompletedCookie();
+          document.cookie = "puente-bienvenida=1; path=/; max-age=31536000; SameSite=Lax";
+          await setOnboardingCompletedCookie().catch(() => {});
           const target = (!next || next === "/bienvenida") ? "/" : next;
           window.location.href = target;
           return;
@@ -160,30 +140,6 @@ function BienvenidaContent() {
         if (profile?.city) {
           setCity(profile.city);
         }
-
-        // Sugerir nombre de usuario disponible
-        const baseUser = cleanUsernameSuggestion(initialName);
-        let candidate = baseUser;
-        let found = false;
-
-        try {
-          for (let i = 0; i < 5; i++) {
-            const { data: isAvail } = await supabase.rpc("username_available", {
-              p_username: candidate,
-            });
-            if (isAvail) {
-              found = true;
-              break;
-            }
-            candidate = `${baseUser}_${Math.floor(10 + Math.random() * 90)}`;
-          }
-        } catch {
-          // Ignorar fallo de red puntual
-        }
-
-        setUsername(candidate);
-        // NUNCA dejar en "checking" para que el usuario no se quede bloqueado
-        setUsernameStatus(found ? "available" : "available");
       } catch (e) {
         console.error("Error loading user in bienvenida:", e);
       } finally {
@@ -196,38 +152,6 @@ function BienvenidaContent() {
 
     return () => clearTimeout(safetyTimer);
   }, [router, next]);
-
-  // Comprobación en vivo del nombre de usuario (400 ms)
-  const checkUsername = (val: string) => {
-    const trimmed = val.toLowerCase().trim();
-    if (!trimmed) {
-      setUsernameStatus(null);
-      return;
-    }
-    const validRegex = /^[a-z0-9_]{3,24}$/;
-    if (!validRegex.test(trimmed)) {
-      setUsernameStatus("invalid");
-      return;
-    }
-
-    setUsernameStatus("checking");
-    clearTimeout(debounceTimerRef.current);
-    debounceTimerRef.current = setTimeout(async () => {
-      try {
-        const supabase = createClient();
-        const { data: isAvail, error } = await supabase.rpc("username_available", {
-          p_username: trimmed,
-        });
-        if (error) {
-          setUsernameStatus("available");
-        } else {
-          setUsernameStatus(isAvail ? "available" : "taken");
-        }
-      } catch {
-        setUsernameStatus("available");
-      }
-    }, 400);
-  };
 
   // Manejo de avatar
   const handleAvatarChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -313,16 +237,6 @@ function BienvenidaContent() {
       return;
     }
 
-    if (usernameStatus === "invalid" || !/^[a-z0-9_]{3,24}$/.test(username.toLowerCase().trim())) {
-      setErrorMsg("Solo minúsculas, números y _, entre 3 y 24 caracteres.");
-      return;
-    }
-
-    if (usernameStatus === "taken") {
-      setErrorMsg("Ese usuario ya lo tomó otra persona. Prueba con otro.");
-      return;
-    }
-
     let formattedPhone: string | null = null;
     if (phoneNumber.trim()) {
       try {
@@ -353,57 +267,12 @@ function BienvenidaContent() {
     try {
       const supabase = createClient();
 
-      // 1. Completar onboarding en BD
-      const { error: rpcError } = await supabase.rpc("complete_onboarding", {
-        p_full_name: fullName.trim(),
-        p_username: username.toLowerCase().trim(),
-        p_phone: formattedPhone || "",
-        p_terms_version: "v1.0",
-      });
-
-      if (rpcError) {
-        clearTimeout(submitTimeout);
-        if (rpcError.message.includes("USUARIO_EN_USO")) {
-          setErrorMsg("Ese usuario ya lo tomó otra persona. Prueba con otro.");
-        } else if (rpcError.message.includes("USUARIO_INVALIDO")) {
-          setErrorMsg("Solo minúsculas, números y _, entre 3 y 24 caracteres.");
-        } else if (rpcError.message.includes("REG_TELEFONO")) {
-          setErrorMsg("Revisa el número, parece incompleto.");
-        } else if (rpcError.message.includes("REG_TERMINOS")) {
-          setErrorMsg("Acepta los términos para continuar.");
-        } else if (
-          rpcError.message.includes("claim in JWT") ||
-          rpcError.message.includes("JWT") ||
-          (rpcError as any).status === 403 ||
-          (rpcError as any).code === "42501"
-        ) {
-          // Sesión huérfana de cuenta recreada: limpiar cookies y enviar a entrar
-          await supabase.auth.signOut().catch(() => {});
-          await signOutAction().catch(() => {});
-          window.location.href = `/entrar?next=${encodeURIComponent(next)}`;
-          return;
-        } else {
-          setErrorMsg("No pudimos completar tu registro: " + rpcError.message);
-        }
-        setSubmitting(false);
-        return;
-      }
-
-      // 2. Gestionar avatar y ubicación en profiles
+      // 1. Subir avatar si el usuario seleccionó un archivo nuevo
       let finalAvatarUrl: string | null = avatarUrl;
 
       if (avatarRemoved) {
         finalAvatarUrl = null;
-        await supabase
-          .from("profiles")
-          .update({
-            avatar_url: null,
-            country_code: countryCode || null,
-            city: city.trim() || null,
-          })
-          .eq("id", user.id);
-      } else if (avatarFile) {
-        // Subir archivo comprimido a Supabase Storage bucket `avatares`
+      } else if (avatarFile && user?.id) {
         const fileName = `${user.id}/avatar_${Date.now()}.webp`;
         const { error: uploadErr } = await supabase.storage
           .from("avatares")
@@ -419,32 +288,47 @@ function BienvenidaContent() {
             .getPublicUrl(fileName);
           finalAvatarUrl = publicUrlData?.publicUrl || null;
         }
-
-        await supabase
-          .from("profiles")
-          .update({
-            avatar_url: finalAvatarUrl,
-            country_code: countryCode || null,
-            city: city.trim() || null,
-          })
-          .eq("id", user.id);
-      } else {
-        // Mantiene la foto de Google o la predeterminada
-        await supabase
-          .from("profiles")
-          .update({
-            country_code: countryCode || null,
-            city: city.trim() || null,
-          })
-          .eq("id", user.id);
-
-        if (avatarUrl && avatarUrl.includes("googleusercontent.com")) {
-          copyGoogleAvatarToStorage(avatarUrl).catch(() => {});
-        }
       }
 
-      // 3. Marcar cookie de bienvenida completada
-      await setOnboardingCompletedCookie();
+      // 2. Completar registro atómicamente en la base de datos (con ID asignado automáticamente)
+      const userAssignedId = user?.id ? `id_${user.id.replace(/-/g, "").slice(0, 10)}` : "";
+      const { error: rpcError } = await (supabase.rpc as any)("complete_onboarding", {
+        p_full_name: fullName.trim(),
+        p_username: userAssignedId,
+        p_phone: formattedPhone || "",
+        p_terms_version: "v1.0",
+        p_country_code: countryCode || null,
+        p_city: city.trim() || null,
+        p_avatar_url: finalAvatarUrl || null,
+      });
+
+      if (rpcError) {
+        clearTimeout(submitTimeout);
+        if (rpcError.message?.includes("REG_TELEFONO")) {
+          setErrorMsg("Revisa el número, parece incompleto.");
+        } else if (rpcError.message?.includes("REG_TERMINOS")) {
+          setErrorMsg("Acepta los términos para continuar.");
+        } else if (
+          rpcError.message?.includes("claim in JWT") ||
+          rpcError.message?.includes("JWT") ||
+          (rpcError as any).status === 403 ||
+          (rpcError as any).code === "42501"
+        ) {
+          // Sesión huérfana de cuenta previa: limpiar cookies y enviar a entrar
+          await supabase.auth.signOut().catch(() => {});
+          await signOutAction().catch(() => {});
+          window.location.href = `/entrar?next=${encodeURIComponent(next)}`;
+          return;
+        } else {
+          setErrorMsg("No pudimos completar tu registro: " + rpcError.message);
+        }
+        setSubmitting(false);
+        return;
+      }
+
+      // 3. Marcar cookie en cliente al instante y en servidor
+      document.cookie = "puente-bienvenida=1; path=/; max-age=31536000; SameSite=Lax";
+      setOnboardingCompletedCookie().catch(() => {});
       clearTimeout(submitTimeout);
 
       const targetUrl = (!next || next === "/bienvenida") ? "/" : next;
@@ -478,13 +362,17 @@ function BienvenidaContent() {
     .map((w) => w[0]?.toUpperCase())
     .join("") || "U";
 
+  const assignedIdPreview = user?.id
+    ? `id_${user.id.replace(/-/g, "").slice(0, 10)}`
+    : "id_asignado";
+
   return (
     <div className="flex min-h-[90vh] items-center justify-center px-4 py-20 sm:py-24">
       <Glass
         variant="panel"
         className="w-full max-w-[480px] shadow-2xl p-7 sm:p-9 border border-[var(--line)] rounded-3xl"
       >
-        {/* Cabecera con Foto de 96 px (PLAN.md Section 3) */}
+        {/* Cabecera con Foto */}
         <div className="text-center mb-8 flex flex-col items-center">
           <div className="relative mb-3 group">
             {effectiveAvatar ? (
@@ -509,7 +397,7 @@ function BienvenidaContent() {
             )}
           </div>
 
-          {/* Botones Cambiar foto y Quitar foto (PLAN.md Section 3) */}
+          {/* Botones Cambiar foto y Quitar foto */}
           <input
             ref={avatarInputRef}
             type="file"
@@ -551,7 +439,7 @@ function BienvenidaContent() {
           </p>
         </div>
 
-        {/* Alerta de error con retry amigable */}
+        {/* Alerta de error */}
         {errorMsg && (
           <div className="mb-6 flex items-start gap-2.5 rounded-2xl bg-red-500/10 p-3.5 text-xs sm:text-sm text-red-500 border border-red-500/20 animate-fade-in">
             <IconoAlerta size={18} className="flex-shrink-0 mt-0.5" />
@@ -584,57 +472,19 @@ function BienvenidaContent() {
             </p>
           </div>
 
-          {/* 2. Nombre de Usuario */}
-          <div>
-            <div className="flex items-center justify-between mb-1.5">
-              <label
-                htmlFor="username"
-                className="block text-xs font-semibold uppercase tracking-wider text-[var(--ink-2)]"
-              >
-                Nombre de usuario *
-              </label>
-              {usernameStatus === "checking" && (
-                <span className="text-[11px] text-[var(--ink-3)] animate-pulse font-mono">
-                  Comprobando...
-                </span>
-              )}
-              {usernameStatus === "available" && (
-                <span className="text-[11px] text-emerald-500 font-medium flex items-center gap-1">
-                  <IconoCheckCirculo size={12} />
-                  Disponible
-                </span>
-              )}
-              {usernameStatus === "taken" && (
-                <span className="text-[11px] text-rose-500 font-medium">
-                  Ya está en uso
-                </span>
-              )}
-              {usernameStatus === "invalid" && (
-                <span className="text-[11px] text-amber-500 font-medium">
-                  Solo minúsculas, números y _
-                </span>
-              )}
-            </div>
-
-            <div className="relative">
-              <span className="absolute left-3.5 top-1/2 -translate-y-1/2 text-sm font-mono text-[var(--ink-3)]">
-                @
+          {/* 2. Tu ID único en Puente (Asignado automáticamente para compartir en red social) */}
+          <div className="rounded-2xl border border-[var(--line)] bg-[var(--field)] p-3.5 flex items-center justify-between gap-3">
+            <div className="min-w-0 flex-1">
+              <span className="block text-[11px] font-semibold uppercase tracking-wider text-[var(--ink-2)] mb-0.5">
+                Tu ID en Puente
               </span>
-              <input
-                id="username"
-                type="text"
-                value={username}
-                onChange={(e) => {
-                  const val = e.target.value.toLowerCase().replace(/\s+/g, "_");
-                  setUsername(val);
-                  checkUsername(val);
-                }}
-                required
-                minLength={3}
-                maxLength={24}
-                className="w-full rounded-xl border border-[var(--line)] bg-[var(--field)] py-2.5 pl-8 pr-3.5 text-sm font-mono text-[var(--ink)] placeholder-[var(--ink-3)] focus:border-[var(--accent)] focus:outline-none focus:ring-1 focus:ring-[var(--accent)] transition-all"
-              />
+              <span className="text-xs font-mono text-[var(--accent-ink)] font-bold truncate block">
+                {assignedIdPreview}
+              </span>
             </div>
+            <span className="text-[11px] text-[var(--ink-3)] text-right flex-shrink-0 max-w-[170px] leading-tight">
+              Identificador único para compartir y encontrarte
+            </span>
           </div>
 
           {/* 3. Número de contacto (opcional) */}
@@ -678,7 +528,7 @@ function BienvenidaContent() {
             </p>
           </div>
 
-          {/* 4. País y ciudad (PLAN.md Section 3: Opcionales, con el mismo selector de publicar) */}
+          {/* 4. País y ciudad */}
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-1">
             <div>
               <label

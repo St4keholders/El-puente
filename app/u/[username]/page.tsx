@@ -14,21 +14,25 @@ export async function generateMetadata(props: UserProfilePageProps): Promise<Met
   const cleanUsername = decodeURIComponent(username).replace(/^@/, "").toLowerCase();
   const supabase = await createClient();
 
-  const { data: profile } = await supabase
-    .from("profiles")
-    .select("full_name, username, bio, avatar_url")
-    .eq("username", cleanUsername)
-    .single();
+  const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(cleanUsername);
+  let query = supabase.from("profiles").select("full_name, username, bio, avatar_url");
+  if (isUuid) {
+    query = query.or(`id.eq.${cleanUsername},username.eq.${cleanUsername}`);
+  } else {
+    query = query.eq("username", cleanUsername);
+  }
+
+  const { data: profile } = await query.maybeSingle();
 
   if (!profile) {
     return { title: "Usuario no encontrado | Puente" };
   }
 
   return {
-    title: `${profile.full_name} (@${profile.username}) | Puente`,
+    title: `${profile.full_name} (${profile.username ? `@${profile.username}` : "Puente"}) | Puente`,
     description: profile.bio || `Perfil y causas comunitarias de ${profile.full_name} en Puente.`,
     openGraph: {
-      title: `${profile.full_name} (@${profile.username})`,
+      title: `${profile.full_name}`,
       description: profile.bio || `Perfil en Puente.`,
       images: profile.avatar_url ? [{ url: profile.avatar_url }] : [],
     },
@@ -44,12 +48,16 @@ export default async function UserProfilePage(props: UserProfilePageProps) {
     data: { user },
   } = await supabase.auth.getUser();
 
-  // Fetch profile
-  const { data: profile, error } = await supabase
-    .from("profiles")
-    .select("*")
-    .eq("username", cleanUsername)
-    .single();
+  // Fetch profile by username or ID
+  const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(cleanUsername);
+  let profQuery = supabase.from("profiles").select("*");
+  if (isUuid) {
+    profQuery = profQuery.or(`id.eq.${cleanUsername},username.eq.${cleanUsername}`);
+  } else {
+    profQuery = profQuery.eq("username", cleanUsername);
+  }
+
+  const { data: profile, error } = await profQuery.maybeSingle();
 
   if (error || !profile) {
     notFound();
