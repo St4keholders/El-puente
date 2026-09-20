@@ -18,12 +18,12 @@ export function useUser() {
     mountedRef.current = true;
     const supabase = createClient();
 
-    // Temporizador de seguridad rápido: loading nunca debe bloquear la UI por más de 1.5s
+    // Temporizador de seguridad: solo como salvaguarda extrema si la red cae completamente (8s)
     const safetyTimer = setTimeout(() => {
       if (mountedRef.current) {
         setLoading(false);
       }
-    }, 1500);
+    }, 8000);
 
     const loadProfileData = async (currentUser: User) => {
       try {
