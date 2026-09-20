@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useState, useCallback } from "react";
 import Link from "next/link";
 import { IconoCerrar, IconoCorazon, IconoFlechaDerecha } from "@/components/iconos";
 import { Glass } from "@/components/ui/Glass";
@@ -29,79 +29,55 @@ export function CountryPanel({
 }: CountryPanelProps) {
   const [causes, setCauses] = useState<Cause[]>([]);
   const [loading, setLoading] = useState(false);
+  const [loadError, setLoadError] = useState<string | null>(null);
   const [totalCount, setTotalCount] = useState(0);
 
-  useEffect(() => {
+  const fetchCountryCauses = useCallback(async () => {
     if (!countryCode) return;
+    setLoading(true);
+    setLoadError(null);
 
-    let isMounted = true;
-    const safetyTimer = setTimeout(() => {
-      if (isMounted) setLoading(false);
-    }, 3500);
+    const supabase = createClient();
 
-    const fetchCountryCauses = async () => {
-      setLoading(true);
-      const supabase = createClient();
+    try {
+      const { data, count, error } = await supabase
+        .from("causes")
+        .select(
+          `
+          *,
+          author:profiles!causes_author_id_fkey(*),
+          cause_media(*)
+        `,
+          { count: "exact" }
+        )
+        .eq("status", "activa")
+        .eq("country_code", countryCode)
+        .order("published_at", { ascending: false })
+        .limit(4);
 
-      try {
-        const { data, count, error } = await supabase
-          .from("causes")
-          .select(
-            `
-            *,
-            author:profiles!causes_author_id_fkey(*),
-            cause_media(*)
-          `,
-            { count: "exact" }
-          )
-          .eq("status", "activa")
-          .eq("country_code", countryCode)
-          .order("published_at", { ascending: false })
-          .limit(4);
-
-        if (!isMounted) return;
-
-        if (!error && data) {
-          setCauses(data as any);
-          setTotalCount(count ?? data.length);
-        } else {
-          // Fallback a consulta simple sin join si falla
-          const fallback = await supabase
-            .from("causes")
-            .select("*", { count: "exact" })
-            .eq("status", "activa")
-            .eq("country_code", countryCode)
-            .limit(4);
-
-          if (fallback.data) {
-            setCauses(fallback.data as any);
-            setTotalCount(fallback.count ?? fallback.data.length);
-          } else {
-            setCauses([]);
-            setTotalCount(0);
-          }
-        }
-      } catch (err) {
-        console.warn("Error fetching country causes:", err);
-        if (isMounted) {
-          setCauses([]);
-          setTotalCount(0);
-        }
-      } finally {
-        clearTimeout(safetyTimer);
-        if (isMounted) {
-          setLoading(false);
-        }
+      if (error) {
+        console.error("Error fetching country causes:", error);
+        setLoadError("No pudimos cargar las causas de este país.");
+        setCauses([]);
+        setTotalCount(0);
+      } else {
+        setCauses(data as any || []);
+        setTotalCount(count ?? (data?.length || 0));
+        setLoadError(null);
       }
-    };
-
-    fetchCountryCauses();
-
-    return () => {
-      isMounted = false;
-      clearTimeout(safetyTimer);
-    };
+    } catch (err: any) {
+      console.error("Error fetching country causes:", err);
+      setLoadError("Ocurrió un error inesperado al consultar las causas.");
+      setCauses([]);
+      setTotalCount(0);
+    } finally {
+      setLoading(false);
+    }
   }, [countryCode]);
+
+  useEffect(() => {
+    fetchCountryCauses();
+  }, [fetchCountryCauses]);
 
   if (!countryCode) return null;
 
@@ -147,6 +123,8 @@ export function CountryPanel({
           <p className="mt-1 text-sm text-[var(--ink-2)]">
             {loading ? (
               "Buscando causas..."
+            ) : loadError ? (
+              "No pudimos conectar con el servidor"
             ) : totalCount > 0 ? (
               <span>
                 <strong className="text-[var(--ink)] font-semibold">{fmt(totalCount)}</strong>{" "}
@@ -158,7 +136,7 @@ export function CountryPanel({
           </p>
         </div>
 
-        {/* Lista de causas o estado vacío */}
+        {/* Lista de causas o estado vacío / error */}
         <div className="flex-1 overflow-y-auto overscroll-contain p-5 space-y-4">
           {loading ? (
             <div className="space-y-4 py-4">
@@ -170,17 +148,31 @@ export function CountryPanel({
                 </div>
               ))}
             </div>
+          ) : loadError ? (
+            <div className="py-8 text-center space-y-3">
+              <p className="text-sm font-semibold text-[var(--ink)]">{loadError}</p>
+              <button
+                type="button"
+                onClick={fetchCountryCauses}
+                className="px-4 py-2 text-xs font-semibold rounded-xl bg-[var(--cta)] hover:bg-[var(--accent)] text-white transition-all cursor-pointer"
+              >
+                Reintentar
+              </button>
+            </div>
           ) : causes.length === 0 ? (
             <div className="py-8 text-center">
               <div className="mx-auto mb-3 flex h-12 w-12 items-center justify-center rounded-2xl bg-[var(--hover)] text-[var(--ink-3)]">
                 <IconoCorazon size={24} />
               </div>
-              <p className="text-sm text-[var(--ink-2)] mb-5 max-w-xs mx-auto">
+              <h3 className="text-base font-semibold text-[var(--ink)] mb-1">
+                Aún no hay causas activas en este país
+              </h3>
+              <p className="text-xs text-[var(--ink-2)] mb-5 max-w-xs mx-auto">
                 Si tú o alguien cercano necesita apoyo en {countryName}, crea la primera causa y aparecerá una luz en el mapa.
               </p>
               <Link
                 href={`/causa/nueva?pais=${countryCode}`}
-                className="inline-flex items-center gap-2 rounded-xl bg-[var(--cta)] px-5 py-2.5 text-sm font-semibold text-white shadow-md transition-all hover:brightness-110 active:scale-95"
+                className="inline-flex items-center gap-2 rounded-xl bg-[var(--cta)] px-5 py-2.5 text-sm font-semibold text-white shadow-md transition-all hover:brightness-110 active:scale-95 cursor-pointer"
               >
                 <span>Crear una causa</span>
               </Link>
