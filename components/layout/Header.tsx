@@ -6,7 +6,13 @@ import { usePathname } from "next/navigation";
 import { Glass } from "@/components/ui/Glass";
 import { ThemeToggle } from "@/components/layout/ThemeToggle";
 import { useUser } from "@/lib/hooks/useUser";
-import { IconoMenuHorizontal, IconoAyuda, IconoCheckCirculo, IconoArchivo } from "@/components/iconos";
+import {
+  IconoMenuHorizontal,
+  IconoAyuda,
+  IconoCheckCirculo,
+  IconoArchivo,
+  IconoSalir,
+} from "@/components/iconos";
 
 export function Header() {
   const pathname = usePathname();
@@ -136,33 +142,43 @@ export function Header() {
             <span>Crear una causa</span>
           </Link>
 
-          {/* Autenticación: Sin sesión = Entrar | Con sesión = Enlace directo a Mi perfil */}
+          {/* Autenticación: Sin sesión = Entrar | Con sesión = Enlace directo a Mi perfil + Cerrar sesión */}
           {user ? (
-            <Link
-              href="/perfil"
-              className="relative inline-flex items-center gap-2 rounded-xl border border-[var(--line)] bg-[var(--field)] pl-2 pr-3 py-1.5 text-sm font-semibold text-[var(--ink)] transition-colors hover:bg-[var(--hover)] hover:border-[var(--glass-edge)]"
-              aria-label={!hasPhone ? "Mi perfil, tienes datos pendientes" : "Mi perfil"}
-            >
-              <div className="relative flex h-6 w-6 items-center justify-center rounded-full overflow-hidden bg-[var(--avatar)] border border-[var(--line)] text-xs font-semibold text-[var(--ink)] flex-shrink-0">
-                {profile?.avatar_url ? (
-                  <img
-                    src={profile.avatar_url}
-                    alt=""
-                    referrerPolicy="no-referrer"
-                    className="h-full w-full object-cover"
+            <div className="flex items-center gap-1.5">
+              <Link
+                href="/perfil"
+                className="relative inline-flex items-center gap-2 rounded-xl border border-[var(--line)] bg-[var(--field)] pl-2 pr-3 py-1.5 text-sm font-semibold text-[var(--ink)] transition-colors hover:bg-[var(--hover)] hover:border-[var(--glass-edge)]"
+                aria-label={!hasPhone ? "Mi perfil, tienes datos pendientes" : "Mi perfil"}
+              >
+                <div className="relative flex h-6 w-6 items-center justify-center rounded-full overflow-hidden bg-[var(--avatar)] border border-[var(--line)] text-xs font-semibold text-[var(--ink)] flex-shrink-0">
+                  {profile?.avatar_url ? (
+                    <img
+                      src={profile.avatar_url}
+                      alt=""
+                      referrerPolicy="no-referrer"
+                      className="h-full w-full object-cover"
+                    />
+                  ) : (
+                    <span>{(profile?.full_name || user.email || "U")[0].toUpperCase()}</span>
+                  )}
+                </div>
+                <span className="max-w-[100px] truncate">{profile?.full_name?.split(" ")[0] || "Perfil"}</span>
+                {!hasPhone && (
+                  <span
+                    aria-hidden="true"
+                    className="absolute -top-1 -right-1 h-2.5 w-2.5 rounded-full bg-[var(--accent)] ring-2 ring-[var(--surface-solid)] animate-pulse"
                   />
-                ) : (
-                  <span>{(profile?.full_name || user.email || "U")[0].toUpperCase()}</span>
                 )}
-              </div>
-              <span className="max-w-[100px] truncate">{profile?.full_name?.split(" ")[0] || "Perfil"}</span>
-              {!hasPhone && (
-                <span
-                  aria-hidden="true"
-                  className="absolute -top-1 -right-1 h-2.5 w-2.5 rounded-full bg-[var(--accent)] ring-2 ring-[var(--surface-solid)] animate-pulse"
-                />
-              )}
-            </Link>
+              </Link>
+              <a
+                href="/auth/signout"
+                title="Cerrar sesión"
+                aria-label="Cerrar sesión"
+                className="inline-flex h-8 w-8 items-center justify-center rounded-xl border border-[var(--line)] bg-[var(--field)] text-[var(--ink-3)] hover:text-rose-400 hover:border-rose-400/40 hover:bg-rose-500/10 transition-colors"
+              >
+                <IconoSalir size={15} />
+              </a>
+            </div>
           ) : (
             <Link
               href="/entrar"

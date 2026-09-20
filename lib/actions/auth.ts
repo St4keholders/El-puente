@@ -89,8 +89,16 @@ export async function signOutAction() {
   const cookieStore = await cookies();
   const allCookies = cookieStore.getAll();
   for (const c of allCookies) {
-    if (c.name.startsWith("sb-") || c.name.includes("auth-token")) {
-      cookieStore.delete(c.name);
+    if (
+      c.name.startsWith("sb-") ||
+      c.name.includes("auth-token") ||
+      c.name.includes("supabase") ||
+      c.name.startsWith("puente")
+    ) {
+      try {
+        cookieStore.set(c.name, "", { path: "/", maxAge: 0, expires: new Date(0) });
+        cookieStore.delete(c.name);
+      } catch {}
     }
   }
 }

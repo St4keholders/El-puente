@@ -31,35 +31,15 @@ export default function CuentaYPrivacidadPage() {
   const [deleteError, setDeleteError] = useState<string | null>(null);
 
   // Standard sign out
-  const handleSignOut = async () => {
+  const handleSignOut = () => {
     setSigningOut(true);
-    try {
-      await supabase.auth.signOut();
-    } catch (err) {
-      console.warn("Client signOut error:", err);
-    }
-    try {
-      await signOutAction();
-    } catch (err) {
-      console.warn("Server signOutAction error:", err);
-    }
-    window.location.href = "/";
+    window.location.href = "/auth/signout";
   };
 
   // Global sign out
-  const handleSignOutGlobal = async () => {
+  const handleSignOutGlobal = () => {
     setSigningOutGlobal(true);
-    try {
-      await supabase.auth.signOut({ scope: "global" });
-    } catch (err) {
-      console.warn("Client global signOut error:", err);
-    }
-    try {
-      await signOutAction();
-    } catch (err) {
-      console.warn("Server signOutAction error:", err);
-    }
-    window.location.href = "/";
+    window.location.href = "/auth/signout";
   };
 
   // Delete account

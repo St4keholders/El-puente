@@ -46,9 +46,8 @@ export function PerfilLayoutClient({
     return pathname.startsWith(itemHref);
   };
 
-  const handleSignOut = async () => {
-    await signOutAction().catch(() => {});
-    window.location.href = "/";
+  const handleSignOut = () => {
+    window.location.href = "/auth/signout";
   };
 
   const displayName =
@@ -177,14 +176,13 @@ export function PerfilLayoutClient({
 
               {/* Botón Cerrar Sesión en Barra Lateral */}
               <div className="pt-3 border-t border-[var(--line)]">
-                <button
-                  type="button"
-                  onClick={handleSignOut}
+                <a
+                  href="/auth/signout"
                   className="w-full flex items-center gap-3 py-2.5 px-3.5 rounded-xl text-xs font-semibold text-rose-400 hover:bg-rose-500/10 transition-colors cursor-pointer text-left"
                 >
                   <IconoSalir size={17} className="text-rose-400" />
                   <span>Cerrar sesión</span>
-                </button>
+                </a>
               </div>
             </div>
           </aside>

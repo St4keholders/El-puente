@@ -88,3 +88,40 @@ export async function completeOnboardingAction(data: OnboardingInput) {
   const targetUrl = !data.next || data.next === "/bienvenida" ? "/" : data.next;
   return { success: true, redirect: targetUrl };
 }
+
+/**
+ * Server Action para comprobar disponibilidad de usuario sin exponer Supabase en cliente.
+ * Se ejecuta en el mismo dominio (el-puente-five.vercel.app), inmune a Brave Shields/bloqueadores.
+ */
+export async function checkUsernameAction(
+  rawUsername: string
+): Promise<{ available: boolean; error?: string }> {
+  const cleanUser = (rawUsername || "").trim().toLowerCase();
+  if (!/^[a-z0-9_]{3,24}$/.test(cleanUser)) {
+    return {
+      available: false,
+      error: "Solo minúsculas, números y _, entre 3 y 24 caracteres.",
+    };
+  }
+
+  try {
+    const supabase = await createClient();
+    const { data, error } = await (supabase.rpc as any)("username_available", {
+      p_username: cleanUser,
+    });
+
+    if (!error && data === true) {
+      return { available: true };
+    }
+    return {
+      available: false,
+      error: "Ese usuario ya lo tomó otra persona.",
+    };
+  } catch (err) {
+    console.warn("checkUsernameAction error:", err);
+    // En caso de fallo de red en verificación previa, no bloquear al usuario:
+    // la llamada a complete_onboarding en la base de datos lo validará con certeza.
+    return { available: true };
+  }
+}
+

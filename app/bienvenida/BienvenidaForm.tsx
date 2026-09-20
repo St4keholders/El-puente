@@ -9,9 +9,7 @@ import {
   IconoCheckCirculo,
 } from "@/components/iconos";
 import { parsePhoneNumber, CountryCode } from "libphonenumber-js";
-import { createClient } from "@/lib/supabase/client";
-import { signOutAction } from "@/lib/actions/auth";
-import { completeOnboardingAction } from "./actions";
+import { completeOnboardingAction, checkUsernameAction } from "./actions";
 
 interface BienvenidaFormProps {
   userId: string;
@@ -62,7 +60,7 @@ export function BienvenidaForm({
 
   const checkDebounceRef = useRef<any>(null);
 
-  // Comprobación en vivo del nombre de usuario (400 ms debounce)
+  // Comprobación en vivo del nombre de usuario mediante Server Action (300 ms debounce)
   useEffect(() => {
     const cleanUser = username.trim().toLowerCase();
     clearTimeout(checkDebounceRef.current);
@@ -80,12 +78,14 @@ export function BienvenidaForm({
     setUsernameStatus("checking");
     checkDebounceRef.current = setTimeout(async () => {
       try {
-        const supabase = createClient();
-        const { data, error } = await supabase.rpc("username_available", {
-          p_username: cleanUser,
-        });
+        // Ejecutar Server Action con tiempo límite de seguridad de 2s
+        const checkPromise = checkUsernameAction(cleanUser);
+        const timeoutPromise = new Promise<{ available: boolean }>((resolve) =>
+          setTimeout(() => resolve({ available: true }), 2000)
+        );
 
-        if (!error && data === true) {
+        const res = await Promise.race([checkPromise, timeoutPromise]);
+        if (res.available) {
           setUsernameStatus("available");
         } else {
           setUsernameStatus("taken");
@@ -93,18 +93,13 @@ export function BienvenidaForm({
       } catch {
         setUsernameStatus("idle");
       }
-    }, 400);
+    }, 300);
 
     return () => clearTimeout(checkDebounceRef.current);
   }, [username]);
 
-  const handleSignOut = async () => {
-    try {
-      const supabase = createClient();
-      await supabase.auth.signOut();
-    } catch {}
-    await signOutAction().catch(() => {});
-    window.location.href = "/";
+  const handleSignOut = () => {
+    window.location.href = "/auth/signout";
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -381,30 +376,34 @@ export function BienvenidaForm({
           <div className="pt-4">
             <button
               type="submit"
-              disabled={submitting || !acceptTerms || usernameStatus === "taken" || usernameStatus === "checking"}
+              disabled={
+                submitting ||
+                !acceptTerms ||
+                usernameStatus === "taken" ||
+                usernameStatus === "invalid" ||
+                username.trim().length < 3
+              }
               className="w-full flex items-center justify-center gap-2 rounded-2xl bg-[var(--accent)] py-3 px-4 text-sm font-semibold text-white shadow-lg shadow-[var(--accent)]/20 hover:brightness-110 active:scale-[0.99] disabled:opacity-50 disabled:cursor-not-allowed transition-all cursor-pointer"
             >
               {submitting ? (
-                <>
-                  <IconoCargando size={16} className="animate-spin" />
-                  <span>Guardando...</span>
-                </>
-              ) : (
-                <span>Listo, entrar</span>
-              )}
+                 <>
+                   <IconoCargando size={16} className="animate-spin" />
+                   <span>Guardando...</span>
+                 </>
+               ) : (
+                 <span>Listo, entrar</span>
+               )}
             </button>
           </div>
 
           {/* Salida pequeña (Sección 1.4) */}
           <div className="text-center pt-2">
-            <button
-              type="button"
-              onClick={handleSignOut}
-              disabled={submitting}
-              className="text-xs text-[var(--ink-3)] hover:text-red-400 transition-colors cursor-pointer"
+            <a
+              href="/auth/signout"
+              className="inline-block text-xs text-[var(--ink-3)] hover:text-red-400 transition-colors cursor-pointer py-1"
             >
               Salir (cerrar sesión)
-            </button>
+            </a>
           </div>
         </form>
       </Glass>
