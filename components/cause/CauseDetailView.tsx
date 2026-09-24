@@ -29,7 +29,8 @@ import { toggleFollowAction } from "@/app/actions/social";
 import { Glass } from "@/components/ui/Glass";
 import { MarcoImagen } from "@/components/media/MarcoImagen";
 import { formatDistanceToNow } from "@/lib/utils/date";
-import { CommentsSection } from "@/components/cause/CommentsSection";
+import { CommentsSection, type CommentItem } from "@/components/cause/CommentsSection";
+import { urlDeAvatar } from "@/lib/media";
 import { createClient } from "@/lib/supabase/client";
 import { ModalRegistrarApoyo } from "@/components/cause/ModalRegistrarApoyo";
 
@@ -89,7 +90,7 @@ interface CauseDetailViewProps {
     author: {
       id: string;
       full_name: string;
-      username: string;
+      public_id: string;
       avatar_url?: string | null;
       bio?: string | null;
     };
@@ -111,10 +112,13 @@ interface CauseDetailViewProps {
   currentUserProfile?: {
     id: string;
     full_name: string | null;
-    username: string | null;
+    public_id: string | null;
     avatar_url: string | null;
     onboarding_completed_at: string | null;
   } | null;
+  initialComments: CommentItem[];
+  initialCommentsHasMore: boolean;
+  initialCommentsTotal: number;
 }
 
 const CATEGORY_LABELS: Record<string, string> = {
@@ -147,6 +151,9 @@ export function CauseDetailView({
   currentUserId,
   currentUser,
   currentUserProfile,
+  initialComments,
+  initialCommentsHasMore,
+  initialCommentsTotal,
 }: CauseDetailViewProps) {
   const router = useRouter();
   const supabase = createClient();
@@ -183,7 +190,10 @@ export function CauseDetailView({
       await navigator.clipboard.writeText(val);
       setCopiedValue(val);
       setTimeout(() => setCopiedValue(null), 2000);
-    } catch {}
+    } catch (err: any) {
+      console.error("No se pudo copiar:", err?.name, err?.message);
+      alert("No pudimos copiar. Selecciona el texto y cópialo a mano.");
+    }
   };
 
   const handleShare = async () => {
@@ -192,7 +202,11 @@ export function CauseDetailView({
       try {
         await navigator.share({ title: cause.title, text: `Apoya la causa: ${cause.title}`, url });
         return;
-      } catch {}
+      } catch (err: any) {
+        // Cancelar el diálogo de compartir no es un error
+        if (err?.name === "AbortError") return;
+        console.error("No se pudo compartir:", err?.name, err?.message);
+      }
     }
     handleCopy(url);
   };
@@ -205,12 +219,16 @@ export function CauseDetailView({
     const next = !isSaved;
     setIsSaved(next);
     try {
-      if (next) {
-        await supabase.from("saves").insert({ user_id: currentUserId, cause_id: cause.id });
-      } else {
-        await supabase.from("saves").delete().eq("user_id", currentUserId).eq("cause_id", cause.id);
+      const { error } = next
+        ? await supabase.from("saves").insert({ user_id: currentUserId, cause_id: cause.id })
+        : await supabase.from("saves").delete().eq("user_id", currentUserId).eq("cause_id", cause.id);
+      if (error) {
+        console.error("Guardar causa:", error.code, error.message);
+        setIsSaved(!next); // revert on error
+        alert(`No pudimos ${next ? "guardar" : "quitar"} la causa: ${error.message}`);
       }
-    } catch {
+    } catch (err: any) {
+      console.error("Guardar causa:", err?.code, err?.message);
       setIsSaved(!next); // revert on error
     }
   };
@@ -226,10 +244,12 @@ export function CauseDetailView({
       const res = await toggleFollowAction(cause.author_id);
       if (!res.success) {
         setIsFollowing(!next); // revert on error
+        alert(res.error || "No pudimos actualizar el seguimiento.");
       } else if (res.isFollowing !== undefined) {
         setIsFollowing(res.isFollowing);
       }
-    } catch {
+    } catch (err: any) {
+      console.error("Seguir:", err?.code, err?.message);
       setIsFollowing(!next); // revert on error
     }
   };
@@ -518,11 +538,11 @@ export function CauseDetailView({
 
       {/* 5. Author Card */}
       <Glass variant="panel" className="p-4 rounded-3xl flex items-center justify-between gap-4">
-        <Link href={`/u/${cause.author.username}`} className="flex items-center gap-3 min-w-0">
+        <Link href={`/u/${cause.author.public_id}`} className="flex items-center gap-3 min-w-0">
           <div className="w-12 h-12 rounded-full overflow-hidden bg-glass-tint flex-shrink-0 flex items-center justify-center font-bold text-accent text-lg">
-            {cause.author.avatar_url ? (
+            {urlDeAvatar(cause.author.avatar_url) ? (
               <img
-                src={cause.author.avatar_url}
+                src={urlDeAvatar(cause.author.avatar_url)!}
                 alt={cause.author.full_name}
                 className="w-full h-full object-cover"
                 referrerPolicy="no-referrer"
@@ -536,7 +556,7 @@ export function CauseDetailView({
             <p className="font-bold text-text-primary text-sm sm:text-base hover:underline truncate">
               {cause.author.full_name}
             </p>
-            <p className="text-xs text-text-secondary">@{cause.author.username}</p>
+            <p className="text-xs text-text-secondary">{cause.author.public_id}</p>
           </div>
         </Link>
 
@@ -836,6 +856,9 @@ export function CauseDetailView({
           causeAuthorId={cause.author_id}
           currentUser={currentUser}
           currentUserProfile={currentUserProfile}
+          initialComments={initialComments}
+          initialHasMore={initialCommentsHasMore}
+          initialTotal={initialCommentsTotal}
         />
       </section>
 

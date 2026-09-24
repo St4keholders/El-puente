@@ -2,6 +2,7 @@ import { Metadata } from "next";
 import { notFound } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { CauseDetailView } from "@/components/cause/CauseDetailView";
+import { cargarComentariosAction, contarComentariosAction } from "@/app/actions/comments";
 import mundoData from "@/lib/geo/mundo.json";
 
 export const dynamic = "force-dynamic";
@@ -109,7 +110,7 @@ export default async function CauseDetailPage(props: CausePageProps) {
       author:profiles!causes_author_id_fkey(
         id,
         full_name,
-        username,
+        public_id,
         avatar_url,
         bio
       ),
@@ -194,10 +195,22 @@ export default async function CauseDetailPage(props: CausePageProps) {
   if (user) {
     const { data: prof } = await supabase
       .from("profiles")
-      .select("id, full_name, username, avatar_url, onboarding_completed_at")
+      .select("id, full_name, public_id, avatar_url, onboarding_completed_at")
       .eq("id", user.id)
       .maybeSingle();
     currentUserProfile = prof;
+  }
+
+  // Comentarios: se resuelven en el servidor y llegan listos (con o sin sesión)
+  const [commentsRes, countRes] = await Promise.all([
+    cargarComentariosAction(cause.id, "causa"),
+    contarComentariosAction(cause.id, "causa"),
+  ]);
+  if (!commentsRes.success) {
+    throw new Error(commentsRes.error);
+  }
+  if (!countRes.success) {
+    throw new Error(countRes.error);
   }
 
   const countries = ((mundoData as any).countries || []) as Array<{ id: string; n: string }>;
@@ -221,6 +234,9 @@ export default async function CauseDetailPage(props: CausePageProps) {
         currentUserId={user?.id || null}
         currentUser={user ? { id: user.id, email: user.email || "" } : null}
         currentUserProfile={currentUserProfile}
+        initialComments={commentsRes.comments as any}
+        initialCommentsHasMore={commentsRes.hasMore}
+        initialCommentsTotal={countRes.count}
       />
     </main>
   );

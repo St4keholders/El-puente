@@ -1,19 +1,23 @@
 "use client";
 
-import React, { useState, useEffect } from "react";
+import React, { useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { IconoComentar, IconoEnviar, IconoBasura, IconoEditar, IconoRespuesta, IconoCheck, IconoCerrar, IconoCargando } from "@/components/iconos";
-import { Glass } from "@/components/ui/Glass";
+import { IconoComentar, IconoEnviar, IconoBasura, IconoEditar, IconoRespuesta, IconoCerrar, IconoCargando } from "@/components/iconos";
 import { formatDistanceToNow } from "@/lib/utils/date";
-import { createClient } from "@/lib/supabase/client";
-import { createCommentAction, deleteCommentAction } from "@/app/actions/comments";
-import type { Database } from "@/lib/database.types";
+import { urlDeAvatar } from "@/lib/media";
+import {
+  cargarComentariosAction,
+  cargarRespuestasAction,
+  createCommentAction,
+  deleteCommentAction,
+  editCommentAction,
+} from "@/app/actions/comments";
 
 export interface CommentAuthor {
   id: string;
   full_name: string;
-  username: string;
+  public_id: string;
   avatar_url?: string | null;
 }
 
@@ -32,81 +36,121 @@ export interface CommentItem {
 interface CommentsSectionProps {
   causeId: string;
   causeAuthorId: string;
-  initialComments?: CommentItem[];
+  initialComments: CommentItem[];
+  initialHasMore: boolean;
+  initialTotal: number;
   thread?: "causa" | "resultado";
   currentUser?: { id: string; email: string } | null;
   currentUserProfile?: {
     id: string;
     full_name: string | null;
-    username: string | null;
+    public_id: string | null;
     avatar_url?: string | null;
     onboarding_completed_at?: string | null;
   } | null;
 }
 
+function Avatar({ author, className }: { author: CommentAuthor; className: string }) {
+  const src = urlDeAvatar(author.avatar_url);
+  return (
+    <Link href={`/u/${author.public_id}`} className={className}>
+      {src ? (
+        <img src={src} alt={author.full_name} className="w-full h-full object-cover" />
+      ) : (
+        author.full_name.charAt(0).toUpperCase()
+      )}
+    </Link>
+  );
+}
+
 export function CommentsSection({
   causeId,
   causeAuthorId,
-  initialComments = [],
+  initialComments,
+  initialHasMore,
+  initialTotal,
   thread = "causa",
   currentUser,
   currentUserProfile,
 }: CommentsSectionProps) {
   const router = useRouter();
-  const supabase = createClient();
   const isOnboarded = Boolean(currentUser && currentUserProfile?.onboarding_completed_at);
+  const loginHref = `/entrar?next=${encodeURIComponent(`/causa/${causeId}#comentarios`)}`;
 
   const [comments, setComments] = useState<CommentItem[]>(initialComments);
+  const [total, setTotal] = useState(initialTotal);
+  const [hasMore, setHasMore] = useState(initialHasMore);
+  const [loadingMore, setLoadingMore] = useState(false);
+  const [loadMoreError, setLoadMoreError] = useState<string | null>(null);
+
   const [repliesMap, setRepliesMap] = useState<Record<string, CommentItem[]>>({});
   const [expandedReplies, setExpandedReplies] = useState<Set<string>>(new Set());
   const [loadingReplies, setLoadingReplies] = useState<Set<string>>(new Set());
+  const [repliesError, setRepliesError] = useState<Record<string, string>>({});
 
   // New comment input
   const [newCommentBody, setNewCommentBody] = useState("");
   const [replyTo, setReplyTo] = useState<CommentItem | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [submitError, setSubmitError] = useState<string | null>(null);
 
   // Edit comment state
   const [editingCommentId, setEditingCommentId] = useState<string | null>(null);
   const [editingBody, setEditingBody] = useState("");
 
-  // Fetch root comments if not provided
-  useEffect(() => {
-    async function loadRootComments() {
-      const { data, error } = await supabase
-        .from("comments")
-        .select(
-          `
-          id,
-          cause_id,
-          parent_id,
-          body,
-          created_at,
-          edited_at,
-          author_id,
-          replies_count,
-          author:profiles!comments_author_id_fkey(
-            id,
-            full_name,
-            username,
-            avatar_url
-          )
-        `
-        )
-        .eq("cause_id", causeId)
-        .eq("thread", thread)
-        .is("parent_id", null)
-        .order("created_at", { ascending: false });
-
-      if (!error && data) {
-        setComments(data as any);
+  const handleLoadMore = async () => {
+    const last = comments.filter((c) => !c.id.startsWith("temp-")).at(-1);
+    setLoadingMore(true);
+    setLoadMoreError(null);
+    try {
+      const res = await cargarComentariosAction(causeId, thread, last?.created_at);
+      if (!res.success) {
+        setLoadMoreError(res.error);
+        return;
       }
+      const nuevos = res.comments as unknown as CommentItem[];
+      setComments((prev) => {
+        const ids = new Set(prev.map((c) => c.id));
+        return [...prev, ...nuevos.filter((c) => !ids.has(c.id))];
+      });
+      setHasMore(res.hasMore);
+    } catch (err: any) {
+      console.error("Ver más comentarios:", err?.code, err?.message);
+      setLoadMoreError(`No pudimos cargar más comentarios: ${err?.message || "error desconocido"}`);
+    } finally {
+      setLoadingMore(false);
     }
+  };
 
-    if (initialComments.length === 0) {
-      loadRootComments();
+  const loadReplies = async (rootCommentId: string) => {
+    setLoadingReplies((prev) => new Set(prev).add(rootCommentId));
+    setRepliesError((prev) => {
+      const next = { ...prev };
+      delete next[rootCommentId];
+      return next;
+    });
+    try {
+      const res = await cargarRespuestasAction(causeId, rootCommentId);
+      if (!res.success) {
+        setRepliesError((prev) => ({ ...prev, [rootCommentId]: res.error }));
+        return;
+      }
+      setRepliesMap((prev) => ({ ...prev, [rootCommentId]: res.replies as unknown as CommentItem[] }));
+      setExpandedReplies((prev) => new Set(prev).add(rootCommentId));
+    } catch (err: any) {
+      console.error("Cargar respuestas:", err?.code, err?.message);
+      setRepliesError((prev) => ({
+        ...prev,
+        [rootCommentId]: `No pudimos cargar las respuestas: ${err?.message || "error desconocido"}`,
+      }));
+    } finally {
+      setLoadingReplies((prev) => {
+        const next = new Set(prev);
+        next.delete(rootCommentId);
+        return next;
+      });
     }
-  }, [causeId, thread, initialComments.length]);
+  };
 
   // Load replies for a root comment
   const toggleReplies = async (rootCommentId: string) => {
@@ -119,52 +163,27 @@ export function CommentsSection({
       return;
     }
 
-    // Load from DB if not already loaded
     if (!repliesMap[rootCommentId]) {
-      setLoadingReplies((prev) => new Set(prev).add(rootCommentId));
-      const { data, error } = await supabase
-        .from("comments")
-        .select(
-          `
-          id,
-          cause_id,
-          parent_id,
-          body,
-          created_at,
-          edited_at,
-          author_id,
-          replies_count,
-          author:profiles!comments_author_id_fkey(
-            id,
-            full_name,
-            username,
-            avatar_url
-          )
-        `
-        )
-        .eq("cause_id", causeId)
-        .eq("parent_id", rootCommentId)
-        .order("created_at", { ascending: true });
-
-      setLoadingReplies((prev) => {
-        const next = new Set(prev);
-        next.delete(rootCommentId);
-        return next;
-      });
-
-      if (!error && data) {
-        setRepliesMap((prev) => ({ ...prev, [rootCommentId]: data as any }));
-      }
+      await loadReplies(rootCommentId);
+      return;
     }
 
     setExpandedReplies((prev) => new Set(prev).add(rootCommentId));
   };
 
-  // Submit new comment or reply
+  const startReply = (target: CommentItem) => {
+    setReplyTo(target);
+    setSubmitError(null);
+    // Responder a una respuesta cuelga del raíz y antepone el nombre de la persona
+    setNewCommentBody(target.parent_id ? `${target.author.full_name}, ` : "");
+    document.getElementById("comentarios")?.scrollIntoView({ behavior: "smooth", block: "start" });
+  };
+
+  // Submit new comment or reply (optimista: aparece de inmediato y se revierte si falla)
   const handleSubmitComment = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!currentUser) {
-      router.push(`/entrar?next=/causa/${causeId}#comentarios`);
+      router.push(loginHref);
       return;
     }
     if (!isOnboarded) {
@@ -174,43 +193,89 @@ export function CommentsSection({
     const trimmed = newCommentBody.trim();
     if (!trimmed || trimmed.length > 1000) return;
 
+    const rootId = replyTo ? replyTo.parent_id || replyTo.id : null;
+    const tempId = `temp-${Date.now()}`;
+    const optimistic: CommentItem = {
+      id: tempId,
+      cause_id: causeId,
+      parent_id: rootId,
+      body: trimmed,
+      created_at: new Date().toISOString(),
+      edited_at: null,
+      author_id: currentUser.id,
+      author: {
+        id: currentUser.id,
+        full_name: currentUserProfile?.full_name || "Tú",
+        public_id: currentUserProfile?.public_id || "",
+        avatar_url: currentUserProfile?.avatar_url,
+      },
+      replies_count: 0,
+    };
+
+    const previousBody = newCommentBody;
+    const previousReplyTo = replyTo;
+
+    if (rootId) {
+      setRepliesMap((prev) => ({ ...prev, [rootId]: [...(prev[rootId] || []), optimistic] }));
+      setExpandedReplies((prev) => new Set(prev).add(rootId));
+      setComments((prev) =>
+        prev.map((c) => (c.id === rootId ? { ...c, replies_count: c.replies_count + 1 } : c))
+      );
+    } else {
+      setComments((prev) => [optimistic, ...prev]);
+    }
+    setTotal((t) => t + 1);
+    setNewCommentBody("");
+    setReplyTo(null);
+    setSubmitError(null);
     setIsSubmitting(true);
+
+    const revert = (message: string) => {
+      if (rootId) {
+        setRepliesMap((prev) => ({
+          ...prev,
+          [rootId]: (prev[rootId] || []).filter((c) => c.id !== tempId),
+        }));
+        setComments((prev) =>
+          prev.map((c) =>
+            c.id === rootId ? { ...c, replies_count: Math.max(0, c.replies_count - 1) } : c
+          )
+        );
+      } else {
+        setComments((prev) => prev.filter((c) => c.id !== tempId));
+      }
+      setTotal((t) => Math.max(0, t - 1));
+      setNewCommentBody(previousBody);
+      setReplyTo(previousReplyTo);
+      setSubmitError(message);
+    };
+
     try {
       const res = await createCommentAction({
         causeId,
         body: trimmed,
-        parentId: replyTo ? replyTo.id : null,
+        parentId: previousReplyTo ? previousReplyTo.id : null,
         thread,
       });
 
       if (!res.success || !res.comment) {
-        alert(res.error || "No pudimos publicar el comentario.");
+        revert(res.error || "No pudimos publicar el comentario.");
+        if (res.redirect) router.push(res.redirect);
         return;
       }
 
-      const item = res.comment as any as CommentItem;
-
-      if (replyTo) {
-        // Find which root comment this belongs to
-        const rootId = replyTo.parent_id || replyTo.id;
+      const item = res.comment as unknown as CommentItem;
+      if (rootId) {
         setRepliesMap((prev) => ({
           ...prev,
-          [rootId]: [...(prev[rootId] || []), item],
+          [rootId]: (prev[rootId] || []).map((c) => (c.id === tempId ? item : c)),
         }));
-        setExpandedReplies((prev) => new Set(prev).add(rootId));
-        // Increment replies_count on root comment
-        setComments((prev) =>
-          prev.map((c) => (c.id === rootId ? { ...c, replies_count: c.replies_count + 1 } : c))
-        );
       } else {
-        // Add root comment to top
-        setComments((prev) => [item, ...prev]);
+        setComments((prev) => prev.map((c) => (c.id === tempId ? item : c)));
       }
-
-      setNewCommentBody("");
-      setReplyTo(null);
     } catch (err: any) {
-      alert("Error al publicar comentario: " + (err?.message || ""));
+      console.error("Publicar comentario:", err?.code, err?.message);
+      revert(`No pudimos publicar el comentario: ${err?.message || "error desconocido"}`);
     } finally {
       setIsSubmitting(false);
     }
@@ -235,6 +300,8 @@ export function CommentsSection({
           delete copy[comment.id];
           return copy;
         });
+        // Al borrar un raíz también se borran sus respuestas
+        setTotal((t) => Math.max(0, t - 1 - comment.replies_count));
       } else {
         const rootId = comment.parent_id!;
         setRepliesMap((prev) => ({
@@ -246,9 +313,11 @@ export function CommentsSection({
             c.id === rootId ? { ...c, replies_count: Math.max(0, c.replies_count - 1) } : c
           )
         );
+        setTotal((t) => Math.max(0, t - 1));
       }
     } catch (err: any) {
-      alert("Error al eliminar: " + (err?.message || ""));
+      console.error("Eliminar comentario:", err?.code, err?.message);
+      alert(`No pudimos eliminar el comentario: ${err?.message || "error desconocido"}`);
     }
   };
 
@@ -257,52 +326,72 @@ export function CommentsSection({
     const trimmed = editingBody.trim();
     if (!trimmed) return;
 
-    await supabase
-      .from("comments")
-      .update({ body: trimmed, edited_at: new Date().toISOString() })
-      .eq("id", commentId);
+    try {
+      const res = await editCommentAction(commentId, causeId, trimmed);
+      if (!res.success) {
+        alert(res.error || "No pudimos guardar el cambio.");
+        return;
+      }
+      const editedAt = res.editedAt || new Date().toISOString();
 
-    setComments((prev) =>
-      prev.map((c) =>
-        c.id === commentId ? { ...c, body: trimmed, edited_at: new Date().toISOString() } : c
-      )
-    );
-
-    // Also update in replies if applicable
-    setRepliesMap((prev) => {
-      const updated = { ...prev };
-      Object.keys(updated).forEach((key) => {
-        updated[key] = updated[key].map((r) =>
-          r.id === commentId ? { ...r, body: trimmed, edited_at: new Date().toISOString() } : r
-        );
+      setComments((prev) =>
+        prev.map((c) => (c.id === commentId ? { ...c, body: trimmed, edited_at: editedAt } : c))
+      );
+      setRepliesMap((prev) => {
+        const updated = { ...prev };
+        Object.keys(updated).forEach((key) => {
+          updated[key] = updated[key].map((r) =>
+            r.id === commentId ? { ...r, body: trimmed, edited_at: editedAt } : r
+          );
+        });
+        return updated;
       });
-      return updated;
-    });
 
-    setEditingCommentId(null);
-    setEditingBody("");
+      setEditingCommentId(null);
+      setEditingBody("");
+    } catch (err: any) {
+      console.error("Editar comentario:", err?.code, err?.message);
+      alert(`No pudimos guardar el cambio: ${err?.message || "error desconocido"}`);
+    }
   };
 
+  const renderReplyButton = (target: CommentItem) =>
+    target.id.startsWith("temp-") ? null : isOnboarded ? (
+      <button
+        onClick={() => startReply(target)}
+        className="text-text-secondary hover:text-accent font-medium flex items-center gap-1 cursor-pointer"
+      >
+        <IconoRespuesta size={12} /> Responder
+      </button>
+    ) : (
+      <Link
+        href={currentUser ? "/bienvenida" : loginHref}
+        className="text-text-secondary hover:text-accent font-medium flex items-center gap-1 cursor-pointer"
+      >
+        <IconoRespuesta size={12} /> Responder
+      </Link>
+    );
+
   return (
-    <section id="comentarios" className="space-y-6 pt-6">
+    <section className="space-y-6 pt-6">
       <div className="flex items-center gap-2">
         <IconoComentar size={20} className="text-accent" />
         <h3 className="font-bold text-lg text-text-primary">
-          Comentarios {comments.length > 0 && `(${comments.length})`}
+          Comentarios ({total})
         </h3>
       </div>
 
       {/* Input box */}
       {!currentUser ? (
         <div className="p-4 rounded-2xl glass-surface border border-glass-tint text-center text-xs text-text-secondary">
-          <Link href={`/entrar?next=/causa/${causeId}#comentarios`} className="text-accent underline font-semibold">
-            Inicia sesión con Google
+          <Link href={loginHref} className="text-accent underline font-semibold">
+            Inicia sesión
           </Link>{" "}
           para dejar un comentario o mensaje de apoyo.
         </div>
       ) : !isOnboarded ? (
         <div className="p-4 rounded-2xl glass-surface border border-glass-tint text-center text-xs text-text-secondary space-y-2">
-          <p>Completa tu nombre de usuario para poder comentar en las causas.</p>
+          <p>Completa tu registro para poder comentar en las causas.</p>
           <Link
             href="/bienvenida"
             className="inline-block px-4 py-1.5 rounded-xl bg-accent text-white font-semibold hover:bg-accent/90 transition-all cursor-pointer"
@@ -315,11 +404,14 @@ export function CommentsSection({
           {replyTo && (
             <div className="flex items-center justify-between text-xs text-text-secondary bg-glass-surface px-3 py-1.5 rounded-xl border border-glass-tint">
               <span>
-                Respondiendo a <strong className="text-text-primary">@{replyTo.author.username}</strong>
+                Respondiendo a <strong className="text-text-primary">{replyTo.author.full_name}</strong>
               </span>
               <button
                 type="button"
-                onClick={() => setReplyTo(null)}
+                onClick={() => {
+                  setReplyTo(null);
+                  setNewCommentBody("");
+                }}
                 className="text-text-secondary hover:text-text-primary cursor-pointer"
               >
                 <IconoCerrar size={14} />
@@ -335,7 +427,7 @@ export function CommentsSection({
               rows={2}
               placeholder={
                 replyTo
-                  ? `Responde a @${replyTo.author.username}...`
+                  ? `Responde a ${replyTo.author.full_name}...`
                   : "Escribe un mensaje de apoyo o consulta..."
               }
               className="flex-1 bg-transparent border-none outline-none text-text-primary text-sm placeholder:text-text-secondary resize-none"
@@ -350,6 +442,8 @@ export function CommentsSection({
             </button>
           </div>
 
+          {submitError && <p className="text-xs text-red-400">{submitError}</p>}
+
           <div className="flex justify-between items-center text-[11px] text-text-secondary">
             <span>Sé respetuoso y solidario</span>
             <span>{newCommentBody.length} / 1000</span>
@@ -362,33 +456,28 @@ export function CommentsSection({
         {comments.map((comment) => {
           const isAuthor = currentUser?.id === comment.author_id;
           const isCauseOwner = currentUser?.id === causeAuthorId;
-          const canDelete = isAuthor || isCauseOwner;
-          const canEdit = isAuthor;
+          const isTemp = comment.id.startsWith("temp-");
+          const canDelete = (isAuthor || isCauseOwner) && !isTemp;
+          const canEdit = isAuthor && !isTemp;
           const replies = repliesMap[comment.id] || [];
           const isExpanded = expandedReplies.has(comment.id);
           const isLoadingThisReplies = loadingReplies.has(comment.id);
+          const thisRepliesError = repliesError[comment.id];
 
           return (
             <div key={comment.id} className="glass-surface p-4 rounded-2xl space-y-2 border border-glass-tint">
               {/* Comment Header */}
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-2">
-                  <Link
-                    href={`/u/${comment.author.username}`}
+                  <Avatar
+                    author={comment.author}
                     className="w-7 h-7 rounded-full bg-glass-tint flex items-center justify-center text-xs font-bold text-accent overflow-hidden"
-                  >
-                    {comment.author.avatar_url ? (
-                      <img src={comment.author.avatar_url} alt={comment.author.full_name} className="w-full h-full object-cover" />
-                    ) : (
-                      comment.author.full_name.charAt(0).toUpperCase()
-                    )}
-                  </Link>
+                  />
 
                   <div className="flex items-center gap-1.5 text-xs">
-                    <Link href={`/u/${comment.author.username}`} className="font-semibold text-text-primary hover:underline">
+                    <Link href={`/u/${comment.author.public_id}`} className="font-semibold text-text-primary hover:underline">
                       {comment.author.full_name}
                     </Link>
-                    <span className="text-text-secondary">@{comment.author.username}</span>
                     <span className="text-text-secondary">•</span>
                     <span className="text-text-secondary">{formatDistanceToNow(comment.created_at)}</span>
                     {comment.edited_at && <span className="text-[10px] text-text-secondary italic">(editado)</span>}
@@ -450,24 +539,7 @@ export function CommentsSection({
 
               {/* Footer: Reply button and Toggle Replies */}
               <div className="pl-9 flex items-center gap-4 text-xs">
-                {isOnboarded ? (
-                  <button
-                    onClick={() => {
-                      setReplyTo(comment);
-                      setNewCommentBody(`@${comment.author.username} `);
-                    }}
-                    className="text-text-secondary hover:text-accent font-medium flex items-center gap-1 cursor-pointer"
-                  >
-                    <IconoRespuesta size={12} /> Responder
-                  </button>
-                ) : currentUser ? (
-                  <Link
-                    href="/bienvenida"
-                    className="text-text-secondary hover:text-accent font-medium flex items-center gap-1 cursor-pointer"
-                  >
-                    <IconoRespuesta size={12} /> Responder
-                  </Link>
-                ) : null}
+                {renderReplyButton(comment)}
 
                 {comment.replies_count > 0 && (
                   <button
@@ -483,38 +555,44 @@ export function CommentsSection({
                 {isLoadingThisReplies && <IconoCargando size={12} className="animate-spin text-accent" />}
               </div>
 
+              {thisRepliesError && (
+                <div className="pl-9 flex items-center gap-2 text-xs text-red-400">
+                  <span>{thisRepliesError}</span>
+                  <button
+                    onClick={() => loadReplies(comment.id)}
+                    className="text-accent hover:underline font-medium"
+                  >
+                    Reintentar
+                  </button>
+                </div>
+              )}
+
               {/* Collapsed/Expanded 1-level replies stream */}
               {isExpanded && replies.length > 0 && (
                 <div className="pl-9 pt-2 space-y-3 border-l-2 border-glass-tint ml-3">
                   {replies.map((reply) => {
                     const isReplyAuthor = currentUser?.id === reply.author_id;
-                    const canDeleteReply = isReplyAuthor || isCauseOwner;
+                    const isReplyTemp = reply.id.startsWith("temp-");
+                    const canDeleteReply = (isReplyAuthor || isCauseOwner) && !isReplyTemp;
 
                     return (
                       <div key={reply.id} className="space-y-1 text-xs">
                         <div className="flex items-center justify-between">
                           <div className="flex items-center gap-2">
-                            <Link
-                              href={`/u/${reply.author.username}`}
+                            <Avatar
+                              author={reply.author}
                               className="w-5 h-5 rounded-full bg-glass-tint flex items-center justify-center font-bold text-[10px] text-accent overflow-hidden"
-                            >
-                              {reply.author.avatar_url ? (
-                                <img src={reply.author.avatar_url} alt={reply.author.full_name} className="w-full h-full object-cover" />
-                              ) : (
-                                reply.author.full_name.charAt(0).toUpperCase()
-                              )}
-                            </Link>
-                            <Link href={`/u/${reply.author.username}`} className="font-semibold text-text-primary hover:underline">
+                            />
+                            <Link href={`/u/${reply.author.public_id}`} className="font-semibold text-text-primary hover:underline">
                               {reply.author.full_name}
                             </Link>
-                            <span className="text-text-secondary">@{reply.author.username}</span>
                             <span className="text-text-secondary">•</span>
                             <span className="text-text-secondary">{formatDistanceToNow(reply.created_at)}</span>
                             {reply.edited_at && <span className="text-[10px] text-text-secondary italic">(editado)</span>}
                           </div>
 
                           <div className="flex items-center gap-1 text-text-secondary">
-                            {isReplyAuthor && (
+                            {isReplyAuthor && !isReplyTemp && (
                               <button
                                 onClick={() => {
                                   setEditingCommentId(reply.id);
@@ -564,6 +642,10 @@ export function CommentsSection({
                         ) : (
                           <p className="text-text-primary whitespace-pre-wrap pl-7">{reply.body}</p>
                         )}
+
+                        <div className="pl-7 flex items-center gap-4 text-xs">
+                          {renderReplyButton(reply)}
+                        </div>
                       </div>
                     );
                   })}
@@ -577,6 +659,20 @@ export function CommentsSection({
           <p className="text-xs text-text-secondary text-center py-4">
             Aún no hay comentarios. Sé la primera persona en dejar un mensaje.
           </p>
+        )}
+
+        {(hasMore || loadMoreError) && (
+          <div className="flex flex-col items-center gap-1 text-xs">
+            {loadMoreError && <span className="text-red-400">{loadMoreError}</span>}
+            <button
+              onClick={handleLoadMore}
+              disabled={loadingMore}
+              className="text-accent hover:underline font-medium flex items-center gap-1 disabled:opacity-50"
+            >
+              {loadingMore && <IconoCargando size={12} className="animate-spin" />}
+              {loadMoreError ? "Reintentar" : "Ver más"}
+            </button>
+          </div>
         )}
       </div>
     </section>
