@@ -3,7 +3,7 @@
 import React from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { signOutAction } from "@/lib/actions/auth";
+import { urlDeAvatar } from "@/lib/media";
 import {
   IconoUsuario,
   IconoBilletera,
@@ -57,12 +57,22 @@ export function PerfilLayoutClient({
     user.email?.split("@")[0] ||
     "Mi perfil";
 
-  const displayUser = profile?.username || user.email?.split("@")[0] || "usuario";
-  const displayAvatar =
-    profile?.avatar_url ||
-    user.user_metadata?.avatar_url ||
-    user.user_metadata?.picture ||
-    null;
+  const publicId = profile?.public_id || "";
+  const displayAvatar = urlDeAvatar(profile?.avatar_url);
+
+  const [copiedId, setCopiedId] = React.useState(false);
+  const [copyError, setCopyError] = React.useState(false);
+  const handleCopyId = async () => {
+    try {
+      await navigator.clipboard.writeText(publicId);
+      setCopyError(false);
+      setCopiedId(true);
+      setTimeout(() => setCopiedId(false), 2000);
+    } catch (err: any) {
+      console.error("No se pudo copiar el ID:", err?.name, err?.message);
+      setCopyError(true);
+    }
+  };
 
   return (
     <div className="relative min-h-screen w-full pt-24 sm:pt-28 lg:pt-32 pb-24">
@@ -123,13 +133,24 @@ export function PerfilLayoutClient({
                 <h2 className="text-base font-bold text-[var(--ink)] tracking-tight truncate max-w-full">
                   {displayName}
                 </h2>
-                <p className="text-xs font-mono text-[var(--ink-3)] truncate max-w-full">
-                  @{displayUser}
-                </p>
+                <div className="flex items-center gap-1.5 max-w-full">
+                  <p className="text-xs font-mono text-[var(--ink-3)] truncate">
+                    {publicId}
+                  </p>
+                  {publicId && (
+                    <button
+                      type="button"
+                      onClick={handleCopyId}
+                      className="text-[10px] font-semibold text-[var(--accent-ink)] hover:underline cursor-pointer flex-shrink-0"
+                    >
+                      {copiedId ? "¡Copiado!" : copyError ? "No se pudo copiar" : "Copiar"}
+                    </button>
+                  )}
+                </div>
 
-                {displayUser && (
+                {publicId && (
                   <Link
-                    href={`/u/${displayUser}`}
+                    href={`/u/${publicId}`}
                     className="mt-3 inline-flex items-center gap-1 text-xs font-medium text-[var(--accent-ink)] hover:underline"
                   >
                     <span>Ver mi perfil público</span>

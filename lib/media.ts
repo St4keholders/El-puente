@@ -1,4 +1,9 @@
-import { createClient } from "@/lib/supabase/client";
+const SUPABASE_URL = (
+  process.env.NEXT_PUBLIC_SUPABASE_URL || "https://aeqqnzqcxurnpbkkahvl.supabase.co"
+).replace(/\/$/, "");
+
+/** Bucket donde viven las fotos de perfil: `{uid}/avatar-{timestamp}.webp`. */
+export const BUCKET_AVATARES = "avatares";
 
 /**
  * Retorna la URL pública de un medio almacenado en Supabase Storage.
@@ -18,25 +23,31 @@ export function urlDeMedio(bucket: string, storagePath: string | null | undefine
     return "";
   }
 
-  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || "";
-  const cleanBase = supabaseUrl.replace(/\/$/, "");
   const cleanPath = storagePath.replace(/^\//, "");
-  return `${cleanBase}/storage/v1/object/public/${bucket}/${cleanPath}`;
+  return `${SUPABASE_URL}/storage/v1/object/public/${bucket}/${cleanPath}`;
 }
 
 /**
- * Consulta la suma de bytes consumidos por un usuario en sus medios.
- * Límite máximo: 60 MB (62,914,560 bytes).
+ * Única función para armar la URL de una foto de perfil (`profiles.avatar_url`).
+ * - Si el valor empieza por `http`, es la foto de Google: se devuelve tal cual.
+ * - Si no, es una ruta del bucket `avatares` y se arma su URL pública.
+ * Devuelve `null` cuando no hay foto, para mostrar las iniciales.
  */
-export const MAX_USER_STORAGE_BYTES = 60 * 1024 * 1024; // 60 MB
+export function urlDeAvatar(valor: string | null | undefined): string | null {
+  if (!valor) return null;
+  if (valor.startsWith("http")) return valor;
+  return urlDeMedio(BUCKET_AVATARES, valor) || null;
+}
 
-export async function getUserStorageUsage(userId: string): Promise<number> {
-  const supabase = createClient();
-  const { data, error } = await supabase
-    .from("cause_media")
-    .select("bytes")
-    .eq("owner_id", userId);
-
-  if (error || !data) return 0;
-  return data.reduce((acc, row) => acc + (row.bytes || 0), 0);
+/**
+ * Si `avatar_url` apunta a un archivo propio del bucket `avatares`, devuelve su
+ * ruta dentro del bucket (para poder borrarlo). Acepta tanto rutas guardadas
+ * como URLs públicas antiguas del mismo bucket. Para fotos externas devuelve null.
+ */
+export function rutaDeAvatarPropio(valor: string | null | undefined): string | null {
+  if (!valor) return null;
+  const prefijo = `${SUPABASE_URL}/storage/v1/object/public/${BUCKET_AVATARES}/`;
+  if (valor.startsWith(prefijo)) return valor.slice(prefijo.length).split("?")[0];
+  if (valor.startsWith("http")) return null;
+  return valor.replace(/^\//, "");
 }

@@ -6,6 +6,7 @@ import { usePathname } from "next/navigation";
 import { Glass } from "@/components/ui/Glass";
 import { ThemeToggle } from "@/components/layout/ThemeToggle";
 import { useUser } from "@/lib/hooks/useUser";
+import { urlDeAvatar } from "@/lib/media";
 import {
   IconoMenuHorizontal,
   IconoAyuda,
@@ -151,9 +152,9 @@ export function Header() {
                 aria-label={!hasPhone ? "Mi perfil, tienes datos pendientes" : "Mi perfil"}
               >
                 <div className="relative flex h-6 w-6 items-center justify-center rounded-full overflow-hidden bg-[var(--avatar)] border border-[var(--line)] text-xs font-semibold text-[var(--ink)] flex-shrink-0">
-                  {profile?.avatar_url ? (
+                  {urlDeAvatar(profile?.avatar_url) ? (
                     <img
-                      src={profile.avatar_url}
+                      src={urlDeAvatar(profile?.avatar_url)!}
                       alt=""
                       referrerPolicy="no-referrer"
                       className="h-full w-full object-cover"

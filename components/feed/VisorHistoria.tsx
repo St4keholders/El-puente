@@ -13,6 +13,7 @@ import { formatDistanceToNow } from "@/lib/utils/date";
 import { getCountryName } from "@/lib/geo/countries";
 import { MarcoImagen } from "@/components/media/MarcoImagen";
 import type { HistoriaItem } from "./HistoriasFila";
+import { urlDeAvatar } from "@/lib/media";
 
 interface VisorHistoriaProps {
   historias: HistoriaItem[];
@@ -189,9 +190,9 @@ export function VisorHistoria({
         <div className="absolute top-7 inset-x-3 z-30 flex items-center justify-between pointer-events-auto">
           <div className="flex items-center gap-2.5">
             <div className="w-10 h-10 rounded-full overflow-hidden bg-[var(--avatar)] border border-white/20 flex items-center justify-center text-xs font-mono font-bold text-white">
-              {current.author.avatar_url ? (
+              {urlDeAvatar(current.author.avatar_url) ? (
                 <img
-                  src={current.author.avatar_url}
+                  src={urlDeAvatar(current.author.avatar_url)!}
                   alt={current.author.full_name}
                   className="w-full h-full object-cover"
                 />

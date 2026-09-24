@@ -5,6 +5,7 @@ import Link from "next/link";
 import { IconoCerrar, IconoCorazon, IconoFlechaDerecha } from "@/components/iconos";
 import { Glass } from "@/components/ui/Glass";
 import { getCountryCausesAction } from "@/app/actions/planet";
+import { urlDeAvatar } from "@/lib/media";
 import type { Database } from "@/lib/database.types";
 
 type Cause = Database["public"]["Tables"]["causes"]["Row"] & {
@@ -194,8 +195,8 @@ export function CountryPanel({
                     {/* Autor */}
                     <div className="mt-2.5 flex items-center gap-2 text-xs text-[var(--ink-2)]">
                       <div className="flex h-6 w-6 items-center justify-center rounded-full bg-[var(--avatar)] font-semibold text-[var(--ink)] overflow-hidden">
-                        {c.author?.avatar_url ? (
-                          <img src={c.author.avatar_url} alt={authorName} className="h-full w-full object-cover" />
+                        {urlDeAvatar(c.author?.avatar_url) ? (
+                          <img src={urlDeAvatar(c.author?.avatar_url)!} alt={authorName} className="h-full w-full object-cover" />
                         ) : (
                           authorName[0].toUpperCase()
                         )}

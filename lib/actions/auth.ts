@@ -34,7 +34,10 @@ export async function copyGoogleAvatarToStorage(googleAvatarUrl?: string | null)
       cache: "no-store",
     });
 
-    if (!res.ok) return null;
+    if (!res.ok) {
+      console.error("Error downloading Google avatar:", res.status, res.statusText);
+      return null;
+    }
     const contentLength = Number(res.headers.get("content-length") || 0);
     if (contentLength > 2 * 1024 * 1024) return null;
 
@@ -42,13 +45,16 @@ export async function copyGoogleAvatarToStorage(googleAvatarUrl?: string | null)
     if (arrayBuffer.byteLength > 2 * 1024 * 1024) return null;
 
     const buffer = Buffer.from(arrayBuffer);
-    const storagePath = `${uid}/avatar.webp`;
+    const contentType = res.headers.get("content-type") || "image/jpeg";
+    const ext = contentType.includes("png") ? "png" : contentType.includes("webp") ? "webp" : "jpg";
+    const storagePath = `${uid}/avatar-${Date.now()}.${ext}`;
 
     const { error: uploadError } = await supabase.storage
       .from("avatares")
       .upload(storagePath, buffer, {
-        contentType: "image/webp",
-        upsert: true,
+        contentType,
+        cacheControl: "31536000",
+        upsert: false,
       });
 
     if (uploadError) {
@@ -56,21 +62,19 @@ export async function copyGoogleAvatarToStorage(googleAvatarUrl?: string | null)
       return null;
     }
 
-    const { data: publicUrlData } = supabase.storage
-      .from("avatares")
-      .getPublicUrl(storagePath);
+    const { error: updateError } = await supabase
+      .from("profiles")
+      .update({ avatar_url: storagePath })
+      .eq("id", uid);
 
-    const publicUrl = publicUrlData?.publicUrl || null;
-    if (publicUrl) {
-      await supabase
-        .from("profiles")
-        .update({ avatar_url: publicUrl })
-        .eq("id", uid);
+    if (updateError) {
+      console.error("Error saving copied avatar:", updateError.code, updateError.message);
+      return null;
     }
 
-    return publicUrl;
-  } catch (err) {
-    console.error("Error copying Google avatar:", err);
+    return storagePath;
+  } catch (err: any) {
+    console.error("Error copying Google avatar:", err?.code, err?.message);
     return null;
   }
 }
@@ -98,7 +102,9 @@ export async function signOutAction() {
       try {
         cookieStore.set(c.name, "", { path: "/", maxAge: 0, expires: new Date(0) });
         cookieStore.delete(c.name);
-      } catch {}
+      } catch (err: any) {
+        console.error("signOutAction cookie:", c.name, err?.message);
+      }
     }
   }
 }
@@ -106,7 +112,7 @@ export async function signOutAction() {
 /**
  * Elimina la cuenta y todos sus datos en cascada (Sección 5.6).
  */
-export async function deleteUserAccount(confirmUsername: string): Promise<{ success: boolean; error?: string }> {
+export async function deleteUserAccount(confirmPublicId: string): Promise<{ success: boolean; error?: string }> {
   try {
     const supabase = await createClient();
     const {
@@ -119,26 +125,26 @@ export async function deleteUserAccount(confirmUsername: string): Promise<{ succ
 
     const uid = user.id;
 
-    // Verificar nombre de usuario
+    // Verificar ID público
     const { data: profile } = await supabase
       .from("profiles")
-      .select("username")
+      .select("public_id")
       .eq("id", uid)
       .single();
 
-    if (!profile || profile.username.toLowerCase() !== confirmUsername.trim().toLowerCase()) {
-      return { success: false, error: "USUARIO_NO_COINCIDE" };
+    if (!profile || profile.public_id.toUpperCase() !== confirmPublicId.trim().toUpperCase()) {
+      return { success: false, error: "El ID público escrito no coincide." };
     }
 
     const secretKey =
       process.env.SUPABASE_SECRET_KEY || process.env.SUPABASE_SERVICE_ROLE_KEY;
 
     if (!secretKey) {
-      console.warn("SUPABASE_SECRET_KEY is missing. Using client delete where possible.");
-      // Intentar borrado con el cliente autenticado si no hay service role key disponible
-      await supabase.from("profiles").delete().eq("id", uid);
-      await supabase.auth.signOut();
-      return { success: true };
+      console.error("deleteUserAccount: falta SUPABASE_SECRET_KEY en el servidor");
+      return {
+        success: false,
+        error: "No podemos eliminar la cuenta en este momento: falta configurar el servidor.",
+      };
     }
 
     const admin = createAdminClient<Database>(

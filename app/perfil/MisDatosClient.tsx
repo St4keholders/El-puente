@@ -11,8 +11,13 @@ import {
 import { parsePhoneNumber, CountryCode } from "libphonenumber-js";
 import { getAllCountries } from "@/lib/geo/countries";
 import { comprimirFotoPerfil } from "@/lib/media/comprimir";
-import { createClient } from "@/lib/supabase/client";
-import { updateProfileAction } from "./actions";
+import { urlDeAvatar } from "@/lib/media";
+import { avisarPerfilActualizado } from "@/lib/hooks/useUser";
+import {
+  updateProfileAction,
+  cambiarFotoPerfilAction,
+  quitarFotoPerfilAction,
+} from "./actions";
 import type { Database } from "@/lib/database.types";
 
 type Profile = Database["public"]["Tables"]["profiles"]["Row"];
@@ -63,9 +68,10 @@ export function MisDatosClient({
     }
   }
 
-  const [avatarUrl, setAvatarUrl] = useState(initialProfile?.avatar_url || "");
+  const [avatarValue, setAvatarValue] = useState<string | null>(initialProfile?.avatar_url || null);
+  const avatarUrl = urlDeAvatar(avatarValue);
   const [fullName, setFullName] = useState(initialProfile?.full_name || "");
-  const [username] = useState(initialProfile?.username || "");
+  const publicId = initialProfile?.public_id || "";
   const [bio, setBio] = useState(initialProfile?.bio || "");
   const [countryCode, setCountryCode] = useState(initialProfile?.country_code || "");
   const [city, setCity] = useState(initialProfile?.city || "");
@@ -84,46 +90,63 @@ export function MisDatosClient({
 
   const handleAvatarUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
+    if (fileInputRef.current) fileInputRef.current.value = "";
     if (!file || !userId) return;
-
-    if (file.size > 5 * 1024 * 1024) {
-      setErrorMsg("La imagen no debe superar los 5 MB.");
-      return;
-    }
 
     setUploadingAvatar(true);
     setErrorMsg(null);
 
     try {
+      // Recorte cuadrado 512 px, WebP 0,85 (redibujar en canvas elimina el EXIF)
       const compressed = await comprimirFotoPerfil(file);
-      const path = `${userId}/avatar_${Date.now()}.webp`;
-      const supabase = createClient();
-      const { error: uploadError } = await supabase.storage
-        .from("avatares")
-        .upload(path, compressed.file, {
-          contentType: "image/webp",
-          upsert: true,
-        });
+      const formData = new FormData();
+      formData.append("file", compressed.file);
 
-      if (uploadError) throw uploadError;
+      const res = await cambiarFotoPerfilAction(formData);
+      if (!res.success) {
+        setErrorMsg(res.error);
+        return;
+      }
 
-      const { data: publicData } = supabase.storage
-        .from("avatares")
-        .getPublicUrl(path);
-
-      const freshUrl = publicData.publicUrl;
-      setAvatarUrl(freshUrl);
-
-      // Guardar avatar inmediatamente en la base de datos
-      await updateProfileAction({
-        fullName: fullName.trim() || initialProfile?.full_name || "Usuario",
-        avatarUrl: freshUrl,
-      });
+      setAvatarValue(res.avatarUrl);
+      avisarPerfilActualizado();
+      router.refresh();
     } catch (err: any) {
-      console.error("Error uploading avatar:", err);
-      setErrorMsg("No pudimos subir la foto. Intenta de nuevo.");
+      console.error("Error procesando la foto de perfil:", err?.code, err?.message);
+      setErrorMsg(`No pudimos procesar la foto: ${err?.message || "error desconocido"}`);
     } finally {
       setUploadingAvatar(false);
+    }
+  };
+
+  const handleRemoveAvatar = async () => {
+    setUploadingAvatar(true);
+    setErrorMsg(null);
+    try {
+      const res = await quitarFotoPerfilAction();
+      if (!res.success) {
+        setErrorMsg(res.error);
+        return;
+      }
+      setAvatarValue(null);
+      avisarPerfilActualizado();
+      router.refresh();
+    } catch (err: any) {
+      console.error("Error quitando la foto de perfil:", err?.code, err?.message);
+      setErrorMsg(`No pudimos quitar la foto: ${err?.message || "error desconocido"}`);
+    } finally {
+      setUploadingAvatar(false);
+    }
+  };
+
+  const handleCopyId = async () => {
+    try {
+      await navigator.clipboard.writeText(publicId);
+      setCopiedId(true);
+      setTimeout(() => setCopiedId(false), 2000);
+    } catch (err: any) {
+      console.error("No se pudo copiar el ID:", err?.name, err?.message);
+      setErrorMsg("No pudimos copiar el ID. Selecciónalo y cópialo a mano.");
     }
   };
 
@@ -160,7 +183,6 @@ export function MisDatosClient({
         countryCode: countryCode || null,
         city: city.trim() || null,
         phone: formattedPhone,
-        avatarUrl: avatarUrl || null,
       });
 
       if (!res.success) {
@@ -169,11 +191,12 @@ export function MisDatosClient({
       }
 
       setSaveNotice(true);
+      avisarPerfilActualizado();
       router.refresh();
       setTimeout(() => setSaveNotice(false), 4000);
     } catch (err: any) {
-      console.error("Error saving profile:", err);
-      setErrorMsg("Ocurrió un error inesperado al guardar.");
+      console.error("Error saving profile:", err?.code, err?.message);
+      setErrorMsg(`Ocurrió un error inesperado al guardar: ${err?.message || "error desconocido"}`);
     } finally {
       setSaving(false);
     }
@@ -257,6 +280,17 @@ export function MisDatosClient({
                 <IconoCamara size={14} />
                 <span>{uploadingAvatar ? "Subiendo foto..." : "Cambiar foto"}</span>
               </button>
+
+              {avatarValue && (
+                <button
+                  type="button"
+                  onClick={handleRemoveAvatar}
+                  disabled={uploadingAvatar || saving}
+                  className="ml-2 inline-flex items-center gap-2 px-3.5 py-2 rounded-xl border border-[var(--line)] bg-[var(--surface-solid)] text-xs font-semibold text-[var(--ink)] hover:bg-[var(--hover)] hover:border-[var(--glass-edge)] transition-colors cursor-pointer"
+                >
+                  <span>Quitar foto</span>
+                </button>
+              )}
             </div>
           </div>
 
@@ -286,14 +320,14 @@ export function MisDatosClient({
             />
           </div>
 
-          {/* Nombre de usuario */}
+          {/* ID público (solo lectura, no se puede cambiar) */}
           <div>
             <div className="flex items-center justify-between mb-1.5">
               <label
-                htmlFor="profile_username"
+                htmlFor="profile_public_id"
                 className="block text-xs font-semibold uppercase tracking-wider text-[var(--ink-2)]"
               >
-                Nombre de usuario
+                ID público
               </label>
               <span className="text-[10px] font-mono px-2 py-0.5 rounded-full bg-emerald-500/10 text-emerald-600 font-semibold border border-emerald-500/20">
                 Público
@@ -301,25 +335,18 @@ export function MisDatosClient({
             </div>
             <div className="flex items-center gap-2">
               <div className="relative flex-1">
-                <span className="absolute left-3.5 top-1/2 -translate-y-1/2 text-sm font-mono text-[var(--ink-3)]">
-                  @
-                </span>
                 <input
-                  id="profile_username"
+                  id="profile_public_id"
                   type="text"
                   readOnly
                   disabled
-                  value={username}
-                  className="w-full rounded-xl border border-[var(--line)] bg-[var(--track)] py-2.5 pl-8 pr-3.5 text-sm font-mono text-[var(--ink)] opacity-90 cursor-not-allowed select-all"
+                  value={publicId}
+                  className="w-full rounded-xl border border-[var(--line)] bg-[var(--track)] py-2.5 px-3.5 text-sm font-mono text-[var(--ink)] opacity-90 cursor-not-allowed select-all"
                 />
               </div>
               <button
                 type="button"
-                onClick={() => {
-                  navigator.clipboard.writeText(username ? `@${username}` : "");
-                  setCopiedId(true);
-                  setTimeout(() => setCopiedId(false), 2000);
-                }}
+                onClick={handleCopyId}
                 className="px-3.5 py-2.5 rounded-xl border border-[var(--line)] bg-[var(--surface-solid)] text-xs font-semibold text-[var(--ink)] hover:bg-[var(--hover)] transition-colors cursor-pointer flex-shrink-0"
               >
                 {copiedId ? "¡Copiado!" : "Copiar"}
