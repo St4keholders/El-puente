@@ -292,7 +292,6 @@ export default function PublicarResultadosPage() {
         .from("causes")
         .update({
           status: "finalizada",
-          finalized_at: new Date().toISOString(),
           raised_reported: amountReceived,
         })
         .eq("id", cause.id);

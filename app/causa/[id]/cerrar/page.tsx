@@ -83,7 +83,6 @@ export default function CerrarCausaPage() {
         .from("causes")
         .update({
           status: "cerrada",
-          closed_at: new Date().toISOString(),
           raised_reported: typeof raisedReported === "number" ? raisedReported : null,
           closing_note: closingNote.trim() || null,
         })

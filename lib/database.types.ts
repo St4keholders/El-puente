@@ -321,6 +321,60 @@ export type Database = {
           },
         ]
       }
+      comment_media: {
+        Row: {
+          bucket: string
+          bytes: number | null
+          comment_id: string
+          created_at: string
+          height: number | null
+          id: string
+          owner_id: string
+          position: number
+          storage_path: string
+          width: number | null
+        }
+        Insert: {
+          bucket?: string
+          bytes?: number | null
+          comment_id: string
+          created_at?: string
+          height?: number | null
+          id?: string
+          owner_id: string
+          position?: number
+          storage_path: string
+          width?: number | null
+        }
+        Update: {
+          bucket?: string
+          bytes?: number | null
+          comment_id?: string
+          created_at?: string
+          height?: number | null
+          id?: string
+          owner_id?: string
+          position?: number
+          storage_path?: string
+          width?: number | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "comment_media_comment_id_fkey"
+            columns: ["comment_id"]
+            isOneToOne: false
+            referencedRelation: "comments"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "comment_media_owner_id_fkey"
+            columns: ["owner_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       comments: {
         Row: {
           author_id: string
@@ -716,6 +770,72 @@ export type Database = {
           },
         ]
       }
+      support_reports: {
+        Row: {
+          amount: number | null
+          cause_id: string
+          confirmed_at: string | null
+          created_at: string
+          currency: string
+          donor_id: string
+          id: string
+          is_anonymous: boolean
+          items: Json | null
+          kind: Database["public"]["Enums"]["support_kind"]
+          message: string | null
+          status: Database["public"]["Enums"]["support_status"]
+          thanks_message: string | null
+          updated_at: string
+        }
+        Insert: {
+          amount?: number | null
+          cause_id: string
+          confirmed_at?: string | null
+          created_at?: string
+          currency?: string
+          donor_id: string
+          id?: string
+          is_anonymous?: boolean
+          items?: Json | null
+          kind: Database["public"]["Enums"]["support_kind"]
+          message?: string | null
+          status?: Database["public"]["Enums"]["support_status"]
+          thanks_message?: string | null
+          updated_at?: string
+        }
+        Update: {
+          amount?: number | null
+          cause_id?: string
+          confirmed_at?: string | null
+          created_at?: string
+          currency?: string
+          donor_id?: string
+          id?: string
+          is_anonymous?: boolean
+          items?: Json | null
+          kind?: Database["public"]["Enums"]["support_kind"]
+          message?: string | null
+          status?: Database["public"]["Enums"]["support_status"]
+          thanks_message?: string | null
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "support_reports_cause_id_fkey"
+            columns: ["cause_id"]
+            isOneToOne: false
+            referencedRelation: "causes"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "support_reports_donor_id_fkey"
+            columns: ["donor_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
     }
     Views: {
       country_cause_counts: {
@@ -727,12 +847,33 @@ export type Database = {
       }
     }
     Functions: {
+      apoyos_confirmados: {
+        Args: { p_cause_id: string }
+        Returns: {
+          amount: number
+          confirmed_at: string
+          currency: string
+          donor_avatar_url: string
+          donor_name: string
+          donor_public_id: string
+          id: string
+          is_anonymous: boolean
+          items: Json
+          kind: Database["public"]["Enums"]["support_kind"]
+          message: string
+          thanks_message: string
+        }[]
+      }
       complete_onboarding: {
         Args: { p_full_name: string; p_phone: string; p_terms_version: string }
         Returns: undefined
       }
       confirm_support: {
         Args: { p_amount?: number; p_cause_id: string; p_supplies?: Json }
+        Returns: undefined
+      }
+      confirmar_aviso: {
+        Args: { p_report_id: string; p_thanks?: string }
         Returns: undefined
       }
       create_example_cause: { Args: never; Returns: string }
@@ -835,6 +976,7 @@ export type Database = {
           isSetofReturn: true
         }
       }
+      rechazar_aviso: { Args: { p_report_id: string }; Returns: undefined }
       search_people_and_causes: {
         Args: { max_results?: number; q: string }
         Returns: {
@@ -881,6 +1023,8 @@ export type Database = {
         | "contenido_inapropiado"
         | "spam"
         | "otro"
+      support_kind: "dinero" | "insumos"
+      support_status: "reportado" | "confirmado" | "no_recibido"
     }
     CompositeTypes: {
       [_ in never]: never
@@ -1040,6 +1184,8 @@ export const Constants = {
         "spam",
         "otro",
       ],
+      support_kind: ["dinero", "insumos"],
+      support_status: ["reportado", "confirmado", "no_recibido"],
     },
   },
 } as const

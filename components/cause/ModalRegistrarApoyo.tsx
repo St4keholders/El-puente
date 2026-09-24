@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect } from "react";
 import { Glass } from "@/components/ui/Glass";
-import { createClient } from "@/lib/supabase/client";
+import { registrarApoyoAction } from "@/app/actions/apoyos";
 import {
   IconoX,
   IconoCargando,
@@ -70,8 +70,6 @@ export function ModalRegistrarApoyo({
     setSaving(true);
 
     try {
-      const supabase = createClient();
-
       const suppliesPayload = includesSupplies && supplies.length > 0
         ? supplies.map((s) => ({
             id: s.id,
@@ -81,21 +79,17 @@ export function ModalRegistrarApoyo({
 
       const numericAmount = includesMoney && amount !== "" ? Number(amount) : undefined;
 
-      const { error } = await supabase.rpc("confirm_support", {
-        p_cause_id: causeId,
-        p_amount: numericAmount,
-        p_supplies: (suppliesPayload as any) ?? undefined,
-      });
-
-      if (error) {
-        throw error;
+      const res = await registrarApoyoAction(causeId, numericAmount ?? null, suppliesPayload);
+      if (!res.success) {
+        setErrorMsg(res.error);
+        return;
       }
 
       onSuccess(numericAmount ?? undefined, supplies);
       onClose();
     } catch (err: any) {
-      console.error("Error confirming support:", err);
-      setErrorMsg(err?.message || "No se pudo registrar el apoyo recibido.");
+      console.error("Error confirming support:", err?.code, err?.message);
+      setErrorMsg(`No se pudo registrar el apoyo recibido: ${err?.message || "error de conexión"}`);
     } finally {
       setSaving(false);
     }
