@@ -28,6 +28,7 @@ import { Glass } from "@/components/ui/Glass";
 import { comprimirFotoCausa } from "@/lib/media/comprimir";
 import { urlDeMedio } from "@/lib/media";
 import { defaultGeocoder, GeocodedCity, puntoDelPais } from "@/lib/geo/geocoder";
+import { getCountryName } from "@/lib/geo/countries";
 import mundoData from "@/lib/geo/mundo.json";
 import { CauseCard } from "@/components/feed/CauseCard";
 import {
@@ -456,6 +457,11 @@ function NuevaCausaContent({
   }, [citySearchQuery, countryCode]);
 
   const handleSelectCity = (item: GeocodedCity) => {
+    // La búsqueda cubre todos los países: si eligió una ciudad de otro país, el país la acompaña
+    const itemCountry = item.countryCode?.toUpperCase();
+    if (itemCountry && itemCountry !== countryCode && countries.some((c) => c.id === itemCountry)) {
+      setCountryCode(itemCountry);
+    }
     setCity(item.name);
     setRegion(item.region || "");
     setLat(item.lat);
@@ -1506,7 +1512,7 @@ function NuevaCausaContent({
                         className="w-full px-4 py-2.5 rounded-xl glass-surface border border-glass-tint focus:border-accent outline-none text-text-primary text-sm bg-transparent"
                       >
                         {CURRENCIES.map((c) => (
-                          <option key={c} value={c} className="bg-background text-text-primary">
+                          <option key={c} value={c}>
                             {c}
                           </option>
                         ))}
@@ -1556,7 +1562,7 @@ function NuevaCausaContent({
                 className="w-full px-4 py-3 rounded-2xl glass-surface border border-glass-tint focus:border-accent outline-none text-text-primary text-sm bg-transparent"
               >
                 {countries.map((c) => (
-                  <option key={c.id} value={c.id} className="bg-background text-text-primary">
+                  <option key={c.id} value={c.id}>
                     {c.n} ({c.id})
                   </option>
                 ))}
@@ -1620,29 +1626,33 @@ function NuevaCausaContent({
                 </p>
               )}
 
-              {/* Suggestions Dropdown */}
+              {/* Suggestions Dropdown: flota por encima de todo, fondo opaco, scroll propio */}
               {citySuggestions.length > 0 && !city && (
-                <div className="absolute left-0 right-0 top-full mt-2 rounded-2xl glass-tint border border-glass-tint shadow-2xl z-30 overflow-hidden py-1">
+                <div className="absolute left-0 right-0 top-full mt-2 rounded-2xl bg-[var(--surface-solid)] border border-[var(--line)] shadow-2xl z-50 max-h-72 overflow-y-auto overscroll-contain py-1">
                   {citySuggestions.map((item, idx) => (
                     <button
-                      key={`${item.name}-${idx}`}
+                      key={`${item.name}-${item.countryCode}-${item.region || ""}-${idx}`}
                       type="button"
                       onClick={() => handleSelectCity(item)}
-                      className="w-full px-4 py-2.5 text-left text-xs hover:bg-glass-tint flex items-center justify-between text-text-primary transition-colors"
+                      className="w-full px-4 py-2.5 text-left text-xs hover:bg-[var(--hover)] flex items-center justify-between gap-3 text-text-primary transition-colors"
                     >
-                      <span className="font-medium">
-                        {item.name}
-                        {item.region ? `, ${item.region}` : ""}
+                      <span className="min-w-0">
+                        <span className="font-medium block truncate">{item.name}</span>
+                        {item.region && (
+                          <span className="text-[11px] text-text-secondary block truncate">{item.region}</span>
+                        )}
                       </span>
-                      <span className="text-[10px] text-text-secondary font-mono">
-                        {item.lat.toFixed(2)}°, {item.lng.toFixed(2)}°
-                      </span>
+                      {item.countryCode && (
+                        <span className="text-[11px] text-text-secondary flex-shrink-0">
+                          {getCountryName(item.countryCode)}
+                        </span>
+                      )}
                     </button>
                   ))}
                   <button
                     type="button"
                     onClick={handleUseTypedCity}
-                    className="w-full px-4 py-2.5 text-left text-xs hover:bg-glass-tint flex items-center justify-between text-text-secondary transition-colors"
+                    className="w-full px-4 py-2.5 mt-1 border-t border-[var(--line)] text-left text-xs hover:bg-[var(--hover)] flex items-center justify-between text-text-secondary transition-colors"
                   >
                     <span>¿No está? Usar «{typedCity}» tal como la escribiste</span>
                   </button>
@@ -2073,7 +2083,7 @@ function NuevaCausaContent({
                         className="w-full px-3 py-2 rounded-xl glass-surface border border-glass-tint text-text-primary outline-none bg-transparent"
                       >
                         {METHOD_KINDS.map((k) => (
-                          <option key={k.id} value={k.id} className="bg-background text-text-primary">
+                          <option key={k.id} value={k.id}>
                             {k.label}
                           </option>
                         ))}
@@ -2197,7 +2207,7 @@ function NuevaCausaContent({
                     className="w-full sm:w-48 px-3 py-2.5 rounded-xl glass-surface border border-glass-tint text-xs text-text-primary outline-none"
                   >
                     {PHONE_COUNTRIES.map((c) => (
-                      <option key={c.code} value={c.code} className="bg-background text-text-primary">
+                      <option key={c.code} value={c.code}>
                         {c.name} ({c.dial})
                       </option>
                     ))}

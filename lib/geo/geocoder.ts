@@ -15,7 +15,8 @@ export interface CitySearchResult {
 }
 
 export interface GeocoderProvider {
-  searchCities(query: string, countryCode?: string): Promise<CitySearchResult>;
+  /** Busca en todos los países; las del país preferido van primero. */
+  searchCities(query: string, preferredCountry?: string): Promise<CitySearchResult>;
 }
 
 // Normalize strings for diacritic-insensitive search
@@ -31,7 +32,7 @@ function roundToTwoDecimals(num: number): number {
   return Math.round(num * 100) / 100;
 }
 
-const MAX_RESULTS = 8;
+const MAX_RESULTS = 10;
 
 /**
  * Punto del país en mundo.json (redondeado a 2 decimales). Se usa como coordenada
@@ -66,54 +67,69 @@ export class HybridGeocoder implements GeocoderProvider {
     );
   }
 
-  async searchCities(query: string, countryCode?: string): Promise<CitySearchResult> {
+  async searchCities(query: string, preferredCountry?: string): Promise<CitySearchResult> {
     const qNorm = normalizeStr(query);
     if (!qNorm || qNorm.length < 2) return { cities: [], remoteError: null };
 
+    const preferred = (preferredCountry || "").toUpperCase();
     const results: GeocodedCity[] = [];
     const seen = new Set<string>();
+    // Ciudades homónimas se distinguen por país y región (Madrid · Iowa / Madrid · Nebraska)
+    // Si la misma ciudad llega sin región (lista local) y con región (proveedor), queda una sola.
     const push = (city: GeocodedCity) => {
-      const key = `${normalizeStr(city.name)}-${city.countryCode.toLowerCase()}`;
-      if (seen.has(key) || results.length >= MAX_RESULTS) return;
+      const base = `${normalizeStr(city.name)}-${city.countryCode.toLowerCase()}`;
+      const key = `${base}-${normalizeStr(city.region || "")}`;
+      if (seen.has(key)) return;
+      const sinRegion = results.findIndex(
+        (c) => !c.region && `${normalizeStr(c.name)}-${c.countryCode.toLowerCase()}` === base
+      );
+      if (city.region && sinRegion >= 0) {
+        seen.add(key);
+        results[sinRegion] = city;
+        return;
+      }
+      if (!city.region && results.some((c) => `${normalizeStr(c.name)}-${c.countryCode.toLowerCase()}` === base)) {
+        return;
+      }
       seen.add(key);
       results.push(city);
+    };
+    // Las del país elegido primero; el resto conserva el orden del proveedor
+    const ordenados = () => {
+      const propias = results.filter((c) => preferred && c.countryCode.toUpperCase() === preferred);
+      const otras = results.filter((c) => !(preferred && c.countryCode.toUpperCase() === preferred));
+      return [...propias, ...otras].slice(0, MAX_RESULTS);
     };
 
     // 1. Ciudades locales de mundo.json (instantáneo)
     for (const city of this.localCities) {
-      if (countryCode && city.countryCode.toUpperCase() !== countryCode.toUpperCase()) continue;
       if (normalizeStr(city.name).includes(qNorm)) push({ ...city });
     }
 
     // 2. Proveedor externo, solo en el navegador y desde 3 letras
-    if (results.length >= MAX_RESULTS || qNorm.length < 3 || typeof window === "undefined") {
-      return { cities: results, remoteError: null };
+    if (qNorm.length < 3 || typeof window === "undefined") {
+      return { cities: ordenados(), remoteError: null };
     }
 
     const maptilerKey = process.env.NEXT_PUBLIC_MAPTILER_KEY;
     const proveedor = maptilerKey ? "MapTiler" : "Photon";
     try {
       if (maptilerKey) {
-        let url = `https://api.maptiler.com/geocoding/${encodeURIComponent(
+        const url = `https://api.maptiler.com/geocoding/${encodeURIComponent(
           query
-        )}.json?key=${maptilerKey}&types=place&limit=6&language=es`;
-        if (countryCode) {
-          url += `&country=${encodeURIComponent(countryCode.toLowerCase())}`;
-        }
+        )}.json?key=${maptilerKey}&types=place&limit=10&language=es`;
         const res = await fetch(url, { signal: AbortSignal.timeout(4000) });
         if (!res.ok) {
           const detalle = await res.text();
           console.error("Geocoder MapTiler:", res.status, detalle);
-          return { cities: results, remoteError: `${proveedor} respondió ${res.status}` };
+          return { cities: ordenados(), remoteError: `${proveedor} respondió ${res.status}` };
         }
         const data = await res.json();
         for (const feat of data.features || []) {
           const name = feat.text || feat.place_name?.split(",")[0] || "";
           const [lng, lat] = feat.center || [];
           const country =
-            feat.context?.find((c: any) => c.id?.startsWith("country"))?.short_code?.toUpperCase() ||
-            countryCode ||
-            "";
+            feat.context?.find((c: any) => c.id?.startsWith("country"))?.short_code?.toUpperCase() || "";
           if (name && typeof lat === "number" && typeof lng === "number") {
             push({
               name,
@@ -125,8 +141,8 @@ export class HybridGeocoder implements GeocoderProvider {
           }
         }
       } else {
-        // Photon (OpenStreetMap). No acepta lang=es (responde 400) ni filtra por país en el
-        // servidor: se piden 15 y se filtra aquí para no perder las del país elegido.
+        // Photon (OpenStreetMap). No acepta lang=es (responde 400). Se piden 15 de todos los
+        // países y luego se ordenan con las del país elegido primero.
         const url = `https://photon.komoot.io/api/?q=${encodeURIComponent(
           query
         )}&osm_tag=place:city&osm_tag=place:town&osm_tag=place:village&limit=15`;
@@ -134,13 +150,12 @@ export class HybridGeocoder implements GeocoderProvider {
         if (!res.ok) {
           const detalle = await res.text();
           console.error("Geocoder Photon:", res.status, detalle);
-          return { cities: results, remoteError: `${proveedor} respondió ${res.status}` };
+          return { cities: ordenados(), remoteError: `${proveedor} respondió ${res.status}` };
         }
         const data = await res.json();
         for (const feat of data.features || []) {
           const props = feat.properties || {};
           const featCountryCode = String(props.countrycode || "").toUpperCase();
-          if (countryCode && featCountryCode !== countryCode.toUpperCase()) continue;
           const [lng, lat] = feat.geometry?.coordinates || [];
           if (props.name && typeof lat === "number" && typeof lng === "number") {
             push({
@@ -153,12 +168,12 @@ export class HybridGeocoder implements GeocoderProvider {
           }
         }
       }
-      return { cities: results, remoteError: null };
+      return { cities: ordenados(), remoteError: null };
     } catch (err: any) {
       console.error(`Geocoder ${proveedor}:`, err?.name, err?.message);
       const motivo =
         err?.name === "TimeoutError" ? "no respondió a tiempo" : err?.message || "error de conexión";
-      return { cities: results, remoteError: `${proveedor}: ${motivo}` };
+      return { cities: ordenados(), remoteError: `${proveedor}: ${motivo}` };
     }
   }
 }

@@ -320,3 +320,12 @@ body {
     transition-duration: 0.01ms !important;
   }
 }
+
+/* Listas desplegables nativas (<select>): el sistema dibuja la lista con color-scheme,
+   declarado arriba según el tema. Las opciones llevan fondo y texto del tema para que
+   se lean en claro y en oscuro. */
+select option,
+select optgroup {
+  background-color: var(--surface-solid);
+  color: var(--ink);
+}
