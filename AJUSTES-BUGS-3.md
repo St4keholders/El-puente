@@ -246,7 +246,7 @@ Después de los cuatro arreglos, revisa y corrige lo que encuentres, **sin tocar
    curl -s "https://aeqqnzqcxurnpbkkahvl.supabase.co/rest/v1/donation_methods?select=id" \
      -H "apikey: <LLAVE_PUBLICA>"
    ```
-   Debe devolver `[]`.
+   Pasa si devuelve `[]` **o** el error `42501` (`permission denied for table donation_methods`). Lo que se verifica es que no salga ni un dato, no la forma de la respuesta: `anon` no tiene privilegios sobre la tabla (segunda barrera además de RLS).
 4. **Funciones duplicadas en la base.** Una sola versión de cada una.
 5. **Contadores** de comentarios, respuestas, guardados, seguidores y causas: que sus triggers existan y cuadren con la realidad.
 6. **Páginas dinámicas.** Las que dependen de sesión o de datos que cambian no deben quedar generadas al compilar.
@@ -282,7 +282,7 @@ Y después del despliegue:
 ```bash
 curl -s https://el-puente-five.vercel.app/explorar | grep -c "Ejemplo"
 curl -s "https://aeqqnzqcxurnpbkkahvl.supabase.co/rest/v1/comments?select=id&limit=1" -H "apikey: <LLAVE_PUBLICA>"
-curl -s "https://aeqqnzqcxurnpbkkahvl.supabase.co/rest/v1/donation_methods?select=id" -H "apikey: <LLAVE_PUBLICA>"
+curl -s "https://aeqqnzqcxurnpbkkahvl.supabase.co/rest/v1/donation_methods?select=id" -H "apikey: <LLAVE_PUBLICA>"   # pasa con [] o con el error 42501: ningún dato
 ```
 
 ---

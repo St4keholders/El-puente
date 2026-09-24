@@ -98,6 +98,7 @@ interface CauseDetailViewProps {
   };
   countryName?: string;
   donationMethods: DonationMethod[];
+  donationMethodsError?: string | null;
   supplies?: Supply[];
   results?: {
     summary: string;
@@ -143,6 +144,7 @@ export function CauseDetailView({
   cause,
   countryName,
   donationMethods,
+  donationMethodsError = null,
   supplies = [],
   results,
   isSaved: initialSaved,
@@ -743,6 +745,8 @@ export function CauseDetailView({
                 <p className="font-semibold text-text-primary">Aquí aparecerían tus métodos de pago.</p>
                 <p className="text-xs mt-1">Esta es una causa de ejemplo. No envíes dinero real.</p>
               </div>
+            ) : donationMethodsError ? (
+              <p className="text-xs text-rose-400 text-center py-4">{donationMethodsError}</p>
             ) : donationMethods.length > 0 ? (
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 {donationMethods.map((m) => (

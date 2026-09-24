@@ -583,7 +583,6 @@ export type Database = {
           onboarding_completed_at: string | null
           public_id: string
           updated_at: string
-          username: string | null
         }
         Insert: {
           avatar_url?: string | null
@@ -600,7 +599,6 @@ export type Database = {
           onboarding_completed_at?: string | null
           public_id?: string
           updated_at?: string
-          username?: string | null
         }
         Update: {
           avatar_url?: string | null
@@ -617,7 +615,6 @@ export type Database = {
           onboarding_completed_at?: string | null
           public_id?: string
           updated_at?: string
-          username?: string | null
         }
         Relationships: []
       }
@@ -853,8 +850,6 @@ export type Database = {
         }[]
       }
       sync_profile_method: { Args: { p_method_id: string }; Returns: number }
-      username_available: { Args: { p_username: string }; Returns: boolean }
-      username_is_valid: { Args: { p: string }; Returns: boolean }
     }
     Enums: {
       activity_kind: "causa_publicada" | "causa_cerrada" | "causa_finalizada"

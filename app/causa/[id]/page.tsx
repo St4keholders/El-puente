@@ -139,15 +139,22 @@ export default async function CauseDetailPage(props: CausePageProps) {
     notFound();
   }
 
-  // Métodos de donación (RLS: solo con sesión, o si es causa de ejemplo)
+  // Métodos de donación: solo con sesión y en causas reales. Sin sesión ni se consulta
+  // (anon no tiene privilegios sobre la tabla) y la vista muestra "Inicia sesión".
   let donationMethods: any[] = [];
-  if (user || cause.is_example) {
-    const { data: methods } = await supabase
+  let donationMethodsError: string | null = null;
+  if (user && !cause.is_example) {
+    const { data: methods, error: methodsErr } = await supabase
       .from("donation_methods")
       .select("*")
       .eq("cause_id", cause.id)
       .order("position", { ascending: true });
-    donationMethods = methods || [];
+    if (methodsErr) {
+      console.error("/causa donation_methods:", methodsErr.code, methodsErr.message);
+      donationMethodsError = `No pudimos cargar los métodos de donación: ${methodsErr.message}`;
+    } else {
+      donationMethods = methods || [];
+    }
   }
 
   // Insumos (visibles sin auth para causas activas por RLS)
@@ -226,6 +233,7 @@ export default async function CauseDetailPage(props: CausePageProps) {
         cause={cause as any}
         countryName={countryObj?.n}
         donationMethods={donationMethods}
+        donationMethodsError={donationMethodsError}
         supplies={supplies}
         results={resultsData}
         isSaved={isSaved}
