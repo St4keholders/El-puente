@@ -5,11 +5,18 @@ import { copyGoogleAvatarToStorage } from "@/lib/actions/auth";
 
 export interface OnboardingInput {
   fullName: string;
-  username: string;
   phoneNumber?: string | null;
+  countryCode?: string | null;
+  city?: string | null;
   termsVersion?: string;
   acceptTerms: boolean;
   next?: string;
+}
+
+/** Nombre y apellidos: mínimo dos palabras, entre 5 y 80 caracteres (igual que REG_NOMBRE). */
+function nombreValido(nombre: string) {
+  const limpio = nombre.trim().replace(/\s+/g, " ");
+  return limpio.length >= 5 && limpio.length <= 80 && limpio.split(" ").length >= 2;
 }
 
 export async function completeOnboardingAction(data: OnboardingInput) {
@@ -17,16 +24,11 @@ export async function completeOnboardingAction(data: OnboardingInput) {
     return { success: false, error: "Acepta los términos para continuar." };
   }
 
-  const name = (data.fullName || "").trim();
-  if (name.length < 2) {
-    return { success: false, error: "Escribe tu nombre completo (mínimo 2 caracteres)." };
-  }
-
-  const username = (data.username || "").trim().toLowerCase();
-  if (!/^[a-z0-9_]{3,24}$/.test(username)) {
+  const name = (data.fullName || "").trim().replace(/\s+/g, " ");
+  if (!nombreValido(name)) {
     return {
       success: false,
-      error: "Solo minúsculas, números y _, entre 3 y 24 caracteres.",
+      error: "Escribe tu nombre y apellidos (mínimo dos palabras, entre 5 y 80 caracteres).",
     };
   }
 
@@ -44,26 +46,18 @@ export async function completeOnboardingAction(data: OnboardingInput) {
     };
   }
 
-  // Llamar a la función canónica de 4 parámetros de la base de datos
-  const { error: rpcErr } = await (supabase.rpc as any)("complete_onboarding", {
+  const { error: rpcErr } = await supabase.rpc("complete_onboarding", {
     p_full_name: name,
-    p_username: username,
     p_phone: data.phoneNumber || null,
     p_terms_version: data.termsVersion || "v1.0",
   });
 
   if (rpcErr) {
-    console.error("complete_onboarding RPC error:", rpcErr);
-    if (rpcErr.message?.includes("USUARIO_EN_USO")) {
+    console.error("complete_onboarding:", rpcErr.code, rpcErr.message);
+    if (rpcErr.message?.includes("REG_NOMBRE")) {
       return {
         success: false,
-        error: "Ese usuario ya lo tomó otra persona. Prueba con otro.",
-      };
-    }
-    if (rpcErr.message?.includes("USUARIO_INVALIDO")) {
-      return {
-        success: false,
-        error: "Solo minúsculas, números y _, entre 3 y 24 caracteres.",
+        error: "Escribe tu nombre y apellidos (mínimo dos palabras, entre 5 y 80 caracteres).",
       };
     }
     if (rpcErr.message?.includes("REG_TELEFONO")) {
@@ -74,54 +68,45 @@ export async function completeOnboardingAction(data: OnboardingInput) {
     }
     return {
       success: false,
-      error: rpcErr.message || "Error al completar el registro.",
+      error: `No pudimos completar el registro: ${rpcErr.message}`,
     };
   }
 
-  // Copiar foto de Google a almacenamiento propio en segundo plano
-  const meta = user.user_metadata || {};
-  const googlePhoto = meta.avatar_url || meta.picture || null;
-  if (googlePhoto) {
-    copyGoogleAvatarToStorage(googlePhoto).catch(() => {});
+  // País y ciudad (opcionales)
+  const cleanCountry =
+    data.countryCode && /^[a-zA-Z]{2}$/.test(data.countryCode.trim())
+      ? data.countryCode.trim().toUpperCase()
+      : null;
+  const cleanCity = data.city?.trim() ? data.city.trim().slice(0, 80) : null;
+
+  if (cleanCountry || cleanCity) {
+    const { error: locErr } = await supabase
+      .from("profiles")
+      .update({ country_code: cleanCountry, city: cleanCity })
+      .eq("id", user.id);
+
+    if (locErr) {
+      console.error("completeOnboardingAction ubicación:", locErr.code, locErr.message);
+      return {
+        success: false,
+        error: `Tu registro quedó listo, pero no pudimos guardar tu país y ciudad: ${locErr.message}`,
+      };
+    }
+  }
+
+  // Copiar la foto de Google al almacenamiento propio (si la foto actual es la de Google)
+  const { data: perfil, error: perfilErr } = await supabase
+    .from("profiles")
+    .select("avatar_url")
+    .eq("id", user.id)
+    .single();
+
+  if (perfilErr) {
+    console.error("completeOnboardingAction leer perfil:", perfilErr.code, perfilErr.message);
+  } else if (perfil?.avatar_url?.startsWith("http")) {
+    await copyGoogleAvatarToStorage(perfil.avatar_url);
   }
 
   const targetUrl = !data.next || data.next === "/bienvenida" ? "/" : data.next;
   return { success: true, redirect: targetUrl };
 }
-
-/**
- * Server Action para comprobar disponibilidad de usuario sin exponer Supabase en cliente.
- * Se ejecuta en el mismo dominio (el-puente-five.vercel.app), inmune a Brave Shields/bloqueadores.
- */
-export async function checkUsernameAction(
-  rawUsername: string
-): Promise<{ available: boolean; error?: string }> {
-  const cleanUser = (rawUsername || "").trim().toLowerCase();
-  if (!/^[a-z0-9_]{3,24}$/.test(cleanUser)) {
-    return {
-      available: false,
-      error: "Solo minúsculas, números y _, entre 3 y 24 caracteres.",
-    };
-  }
-
-  try {
-    const supabase = await createClient();
-    const { data, error } = await (supabase.rpc as any)("username_available", {
-      p_username: cleanUser,
-    });
-
-    if (!error && data === true) {
-      return { available: true };
-    }
-    return {
-      available: false,
-      error: "Ese usuario ya lo tomó otra persona.",
-    };
-  } catch (err) {
-    console.warn("checkUsernameAction error:", err);
-    // En caso de fallo de red en verificación previa, no bloquear al usuario:
-    // la llamada a complete_onboarding en la base de datos lo validará con certeza.
-    return { available: true };
-  }
-}
-

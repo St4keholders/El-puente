@@ -22,7 +22,7 @@ export default async function MisCausasPage() {
     supabase.from("causes").select("id", { count: "exact", head: true }).eq("author_id", user.id).eq("status", "cerrada"),
     supabase.from("causes").select("id", { count: "exact", head: true }).eq("author_id", user.id).eq("status", "finalizada"),
     supabase.from("causes").select("id").eq("author_id", user.id).eq("is_example", true).maybeSingle(),
-    supabase.from("profiles").select("id, full_name, username, avatar_url").eq("id", user.id).maybeSingle(),
+    supabase.from("profiles").select("id, full_name, public_id, avatar_url").eq("id", user.id).maybeSingle(),
   ]);
 
   const initialCounts: Record<CauseStatusTab, number> = {
@@ -55,7 +55,7 @@ export default async function MisCausasPage() {
       collection_type,
       is_example,
       first_support_confirmed_at,
-      profiles:author_id(id, full_name, username, avatar_url),
+      profiles:author_id(id, full_name, public_id, avatar_url),
       cause_media(id, storage_path, kind, position, width, height),
       cause_results(summary, amount_received),
       cause_supplies(id, name, unit, quantity_needed, quantity_received, position)
@@ -109,7 +109,7 @@ export default async function MisCausasPage() {
       author: {
         id: c.profiles?.id || user.id,
         full_name: c.profiles?.full_name || profile?.full_name || "Mi perfil",
-        username: c.profiles?.username || profile?.username || "yo",
+        public_id: c.profiles?.public_id || profile?.public_id || "",
         avatar_url: c.profiles?.avatar_url || profile?.avatar_url,
       },
       media,

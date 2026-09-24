@@ -18,7 +18,7 @@ export interface HistoriaItem {
   author: {
     id: string;
     full_name: string;
-    username: string;
+    public_id: string;
     avatar_url?: string | null;
   };
   cover_media?: {
@@ -53,7 +53,10 @@ export function HistoriasFila({ initialHistorias }: HistoriasFilaProps) {
           setSeenIds(new Set(parsed));
         }
       }
-    } catch {}
+    } catch (err: any) {
+      // Solo afecta el marcador de "vista"; el navegador puede bloquear localStorage
+      console.error("Historias vistas (localStorage):", err?.name, err?.message);
+    }
   }, []);
 
   // Cargar historias si no llegaron por props
@@ -81,7 +84,7 @@ export function HistoriasFila({ initialHistorias }: HistoriasFilaProps) {
           author:profiles!causes_author_id_fkey(
             id,
             full_name,
-            username,
+            public_id,
             avatar_url
           ),
           media:cause_media(
@@ -92,7 +95,11 @@ export function HistoriasFila({ initialHistorias }: HistoriasFilaProps) {
           )
         `);
 
-        if (!error && data && Array.isArray(data)) {
+        if (error) {
+          console.error("recent_closures:", error.code, error.message);
+          return;
+        }
+        if (data && Array.isArray(data)) {
           const items: HistoriaItem[] = data.map((d: any) => {
             const sortedMedia = ((d.media || []) as any[]).sort(
               (a, b) => a.position - b.position
@@ -109,15 +116,15 @@ export function HistoriasFila({ initialHistorias }: HistoriasFilaProps) {
               author: d.author || {
                 id: "unknown",
                 full_name: "Persona",
-                username: "usuario",
+                public_id: "",
               },
               cover_media: sortedMedia[0] || null,
             };
           });
           setHistorias(items);
         }
-      } catch (err) {
-        console.warn("Error loading stories:", err);
+      } catch (err: any) {
+        console.error("Error loading stories:", err?.code, err?.message);
       }
     }
 
@@ -149,7 +156,9 @@ export function HistoriasFila({ initialHistorias }: HistoriasFilaProps) {
       next.add(id);
       try {
         localStorage.setItem(STORAGE_KEY, JSON.stringify(Array.from(next)));
-      } catch {}
+      } catch (err: any) {
+        console.error("Historias vistas (localStorage):", err?.name, err?.message);
+      }
       return next;
     });
   };

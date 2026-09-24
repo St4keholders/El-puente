@@ -26,6 +26,7 @@ export function CausasGuardadasClient({
   const [causes, setCauses] = useState<CauseCardProps[]>(initialCauses);
   const [fetchError, setFetchError] = useState<string | null>(initialError);
   const [loadingMore, setLoadingMore] = useState(false);
+  const [loadMoreError, setLoadMoreError] = useState<string | null>(null);
   const [cursor, setCursor] = useState<string | null>(initialCursor);
   const [hasMore, setHasMore] = useState(initialHasMore);
 
@@ -34,6 +35,7 @@ export function CausasGuardadasClient({
   const fetchMoreSavedCauses = useCallback(
     async (nextCursor: string) => {
       setLoadingMore(true);
+      setLoadMoreError(null);
 
       try {
         const { data: savesData, error: savesError } = await supabase
@@ -79,7 +81,7 @@ export function CausasGuardadasClient({
             author:profiles!causes_author_id_fkey(
               id,
               full_name,
-              username,
+              public_id,
               avatar_url
             ),
             media:cause_media(
@@ -111,7 +113,7 @@ export function CausasGuardadasClient({
             const author = c.author || {
               id: "unknown",
               full_name: "Usuario",
-              username: "usuario",
+              public_id: "",
               avatar_url: null,
             };
 
@@ -148,7 +150,7 @@ export function CausasGuardadasClient({
               author: {
                 id: author.id,
                 full_name: author.full_name || "Usuario",
-                username: author.username || "usuario",
+                public_id: author.public_id || "",
                 avatar_url: author.avatar_url,
               },
               media,
@@ -166,7 +168,8 @@ export function CausasGuardadasClient({
           setCursor(null);
         }
       } catch (err: any) {
-        console.error("Error loading more saved causes:", err);
+        console.error("Error loading more saved causes:", err?.code, err?.message);
+        setLoadMoreError(`No pudimos cargar más guardadas: ${err?.message || "error de conexión"}`);
       } finally {
         setLoadingMore(false);
       }
@@ -255,6 +258,18 @@ export function CausasGuardadasClient({
               <div className="flex items-center justify-center gap-2 text-xs text-[var(--ink-3)]">
                 <IconoCargando className="animate-spin text-[var(--accent)]" size={16} />
                 <span>Cargando más guardadas...</span>
+              </div>
+            )}
+            {loadMoreError && !loadingMore && (
+              <div className="flex items-center justify-center gap-2 text-xs text-rose-400">
+                <span>{loadMoreError}</span>
+                <button
+                  type="button"
+                  onClick={() => cursor && fetchMoreSavedCauses(cursor)}
+                  className="font-semibold underline cursor-pointer"
+                >
+                  Reintentar
+                </button>
               </div>
             )}
           </div>

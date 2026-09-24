@@ -35,18 +35,17 @@ INSERT INTO auth.users (
 ON CONFLICT (id) DO NOTHING;
 
 -- 2. 8 Perfiles coherentes con sus países
-INSERT INTO public.profiles (id, username, full_name, city, country_code, is_seed, bio)
+INSERT INTO public.profiles (id, full_name, city, country_code, is_seed, bio)
 VALUES
-  ('11111111-0000-0000-0000-000000000001', 'luz_ortiz', 'Luz Marina Ortiz', 'Quibdó', 'CO', true, 'Líder comunitaria del barrio El Caraño, defensora de iniciativas de apoyo mutuo en el Chocó.'),
-  ('11111111-0000-0000-0000-000000000002', 'mehmet_kaya', 'Mehmet Kaya', 'Antakya', 'TR', true, 'Voluntario en reconstrucción comunitaria tras sismos en Hatay.'),
-  ('11111111-0000-0000-0000-000000000003', 'guadalupe_h', 'Guadalupe Hernández', 'Oaxaca', 'MX', true, 'Coordinadora de cocinas comunitarias y redes de apoyo vecinal.'),
-  ('11111111-0000-0000-0000-000000000004', 'haruki_tanaka', 'Haruki Tanaka', 'Wajima', 'JP', true, 'Voluntario comunitario en la península de Noto.'),
-  ('11111111-0000-0000-0000-000000000005', 'youssef_amrani', 'Youssef El Amrani', 'Marrakech', 'MA', true, 'Coordinador de brigadas rurales de socorro en las montañas del Alto Atlas.'),
-  ('11111111-0000-0000-0000-000000000006', 'pasang_sherpa', 'Pasang Sherpa', 'Gorkha', 'NP', true, 'Docente comunitario enfocado en la reconstrucción de escuelas rurales.'),
-  ('11111111-0000-0000-0000-000000000007', 'fundacion_cerrovivo', 'Fundación Cerro Vivo', 'Viña del Mar', 'CL', true, 'Organización comunitaria dedicada a la reconstrucción post-incendios forestales.'),
-  ('11111111-0000-0000-0000-000000000008', 'olena_kovalenko', 'Olena Kovalenko', 'Járkov', 'UA', true, 'Médica y voluntaria en centros de atención materno-infantil.')
+  ('11111111-0000-0000-0000-000000000001', 'Luz Marina Ortiz', 'Quibdó', 'CO', true, 'Líder comunitaria del barrio El Caraño, defensora de iniciativas de apoyo mutuo en el Chocó.'),
+  ('11111111-0000-0000-0000-000000000002', 'Mehmet Kaya', 'Antakya', 'TR', true, 'Voluntario en reconstrucción comunitaria tras sismos en Hatay.'),
+  ('11111111-0000-0000-0000-000000000003', 'Guadalupe Hernández', 'Oaxaca', 'MX', true, 'Coordinadora de cocinas comunitarias y redes de apoyo vecinal.'),
+  ('11111111-0000-0000-0000-000000000004', 'Haruki Tanaka', 'Wajima', 'JP', true, 'Voluntario comunitario en la península de Noto.'),
+  ('11111111-0000-0000-0000-000000000005', 'Youssef El Amrani', 'Marrakech', 'MA', true, 'Coordinador de brigadas rurales de socorro en las montañas del Alto Atlas.'),
+  ('11111111-0000-0000-0000-000000000006', 'Pasang Sherpa', 'Gorkha', 'NP', true, 'Docente comunitario enfocado en la reconstrucción de escuelas rurales.'),
+  ('11111111-0000-0000-0000-000000000007', 'Fundación Cerro Vivo', 'Viña del Mar', 'CL', true, 'Organización comunitaria dedicada a la reconstrucción post-incendios forestales.'),
+  ('11111111-0000-0000-0000-000000000008', 'Olena Kovalenko', 'Járkov', 'UA', true, 'Médica y voluntaria en centros de atención materno-infantil.')
 ON CONFLICT (id) DO UPDATE SET
-  username = EXCLUDED.username,
   full_name = EXCLUDED.full_name,
   city = EXCLUDED.city,
   country_code = EXCLUDED.country_code,

@@ -12,6 +12,8 @@ export interface FeedFilters {
 
 export interface FeedPageResult {
   causes: CauseCardProps[];
+  /** Mensaje si la consulta falló (nunca se devuelve una lista vacía en su lugar). */
+  error?: string;
   nextCursor?: {
     date: string;
     id: string;
@@ -112,7 +114,7 @@ export async function fetchFeedPage(
       author:profiles!causes_author_id_fkey(
         id,
         full_name,
-        username,
+        public_id,
         avatar_url
       ),
       media:cause_media(
@@ -140,6 +142,7 @@ export async function fetchFeedPage(
   if (!rpcError && rpcData) {
     rawCauses = rpcData;
   } else {
+    if (rpcError) console.error("fetchFeedPage feed_causes:", rpcError.code, rpcError.message);
     // Fallback a consulta directa sobre tabla si RPC tiene alguna restricción en joins PostgREST
     let directQuery = supabase
       .from("causes")
@@ -166,7 +169,7 @@ export async function fetchFeedPage(
         author:profiles!causes_author_id_fkey(
           id,
           full_name,
-          username,
+          public_id,
           avatar_url
         ),
         media:cause_media(
@@ -207,8 +210,13 @@ export async function fetchFeedPage(
 
     const { data: directData, error: directError } = await directQuery;
     if (directError) {
-      console.error("fetchFeedPage direct fallback error:", directError);
-      return { causes: [], nextCursor: null, hasMore: false };
+      console.error("fetchFeedPage direct fallback error:", directError.code, directError.message);
+      return {
+        causes: [],
+        nextCursor: null,
+        hasMore: false,
+        error: `No pudimos cargar las causas: ${directError.message}`,
+      };
     }
     rawCauses = directData;
   }
@@ -252,7 +260,7 @@ export async function fetchFeedPage(
   // 2 comentarios recientes por causa
   const commentsByCause: Record<
     string,
-    Array<{ id: string; author_name: string; author_username: string; body: string }>
+    Array<{ id: string; author_name: string; body: string }>
   > = {};
 
   if (causeIds.length > 0) {
@@ -265,8 +273,7 @@ export async function fetchFeedPage(
         body,
         created_at,
         author:profiles!comments_author_id_fkey(
-          full_name,
-          username
+          full_name
         )
       `
       )
@@ -282,7 +289,6 @@ export async function fetchFeedPage(
         commentsByCause[row.cause_id].push({
           id: row.id,
           author_name: row.author?.full_name || "Usuario",
-          author_username: row.author?.username || "usuario",
           body: row.body,
         });
       }
@@ -321,7 +327,7 @@ export async function fetchFeedPage(
     const author = c.author || {
       id: "unknown",
       full_name: "Usuario",
-      username: "usuario",
+      public_id: "",
     };
 
     const causeMediaItems = ((c.media || []) as any[])
@@ -372,7 +378,7 @@ export async function fetchFeedPage(
       author: {
         id: author.id,
         full_name: author.full_name || "Usuario",
-        username: author.username || "usuario",
+        public_id: author.public_id || "",
         avatar_url: author.avatar_url,
       },
       media: causeMediaItems,

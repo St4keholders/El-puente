@@ -14,13 +14,13 @@ interface SearchItem {
   countryCode: string;
   lat?: number;
   lng?: number;
-  username?: string;
+  publicId?: string;
   causeId?: string;
 }
 
 interface HeroSearchProps {
   onSelectCountry: (countryCode: string, opts?: { lat?: number; lng?: number; focusCauseId?: string; nearCity?: string }) => void;
-  onNavigateToUser?: (username: string) => void;
+  onNavigateToUser?: (publicId: string) => void;
   activeCountryCounts: Map<string, number>;
 }
 
@@ -120,22 +120,26 @@ export function HeroSearch({ onSelectCountry, onNavigateToUser, activeCountryCou
           max_results: 6,
         });
 
-        if (!error && data) {
+        if (error) {
+          console.error("search_people_and_causes:", error.code, error.message);
+          return;
+        }
+        if (data) {
           const items: SearchItem[] = data.map((d: any) => ({
             type: d.kind === "persona" ? "person" : "cause",
             id: d.id,
             label: d.label,
-            sublabel: d.sublabel,
-            countryCode: d.country_code,
-            lat: d.lat,
-            lng: d.lng,
-            username: d.username,
+            sublabel: d.sublabel || "",
+            countryCode: d.country_code || "",
+            lat: d.lat ?? undefined,
+            lng: d.lng ?? undefined,
+            publicId: d.public_id ?? undefined,
             causeId: d.kind === "causa" ? d.id : undefined,
           }));
           setRemoteResults(items);
         }
-      } catch (err) {
-        console.error("Error in remote search:", err);
+      } catch (err: any) {
+        console.error("Error in remote search:", err?.code, err?.message);
       }
     }, 200);
 
@@ -178,11 +182,11 @@ export function HeroSearch({ onSelectCountry, onNavigateToUser, activeCountryCou
     setQuery(item.label);
     inputRef.current?.blur();
 
-    if (item.type === "person" && item.username) {
+    if (item.type === "person" && item.publicId) {
       if (onNavigateToUser) {
-        onNavigateToUser(item.username);
+        onNavigateToUser(item.publicId);
       } else {
-        window.location.href = `/u/${item.username}`;
+        window.location.href = `/u/${item.publicId}`;
       }
     } else if (item.type === "city") {
       onSelectCountry(item.countryCode, { lat: item.lat, lng: item.lng, nearCity: item.label });

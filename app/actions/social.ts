@@ -33,10 +33,10 @@ export async function toggleFollowAction(
       .eq("following_id", targetUserId)
       .maybeSingle();
 
-    // Fetch target user username for accurate path revalidation
+    // ID público de la persona para revalidar su perfil
     const { data: targetProf } = await supabase
       .from("profiles")
-      .select("username")
+      .select("public_id")
       .eq("id", targetUserId)
       .maybeSingle();
 
@@ -49,10 +49,9 @@ export async function toggleFollowAction(
         .eq("following_id", targetUserId);
 
       if (delErr) throw delErr;
-      if (targetProf?.username) {
-        revalidatePath(`/u/${targetProf.username}`);
+      if (targetProf?.public_id) {
+        revalidatePath(`/u/${targetProf.public_id}`);
       }
-      revalidatePath(`/u/${targetUserId}`);
       revalidatePath("/explorar");
       revalidatePath("/");
       return { success: true, isFollowing: false };
@@ -64,10 +63,9 @@ export async function toggleFollowAction(
       });
 
       if (insErr) throw insErr;
-      if (targetProf?.username) {
-        revalidatePath(`/u/${targetProf.username}`);
+      if (targetProf?.public_id) {
+        revalidatePath(`/u/${targetProf.public_id}`);
       }
-      revalidatePath(`/u/${targetUserId}`);
       revalidatePath("/explorar");
       revalidatePath("/");
       return { success: true, isFollowing: true };

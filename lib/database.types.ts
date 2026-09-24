@@ -581,8 +581,8 @@ export type Database = {
           id: string
           is_seed: boolean
           onboarding_completed_at: string | null
+          public_id: string
           updated_at: string
-          username: string
         }
         Insert: {
           avatar_url?: string | null
@@ -597,8 +597,8 @@ export type Database = {
           id: string
           is_seed?: boolean
           onboarding_completed_at?: string | null
+          public_id?: string
           updated_at?: string
-          username: string
         }
         Update: {
           avatar_url?: string | null
@@ -613,8 +613,8 @@ export type Database = {
           id?: string
           is_seed?: boolean
           onboarding_completed_at?: string | null
+          public_id?: string
           updated_at?: string
-          username?: string
         }
         Relationships: []
       }
@@ -730,9 +730,8 @@ export type Database = {
       complete_onboarding: {
         Args: {
           p_full_name: string
-          p_phone: string
+          p_phone: string | null
           p_terms_version: string
-          p_username: string
         }
         Returns: undefined
       }
@@ -743,6 +742,7 @@ export type Database = {
       create_example_cause: { Args: never; Returns: string }
       escape_like: { Args: { t: string }; Returns: string }
       f_unaccent: { Args: { "": string }; Returns: string }
+      gen_public_id: { Args: never; Returns: string }
       feed_causes: {
         Args: {
           p_category?: Database["public"]["Enums"]["cause_category"]
@@ -842,20 +842,18 @@ export type Database = {
       search_people_and_causes: {
         Args: { max_results?: number; q: string }
         Returns: {
-          country_code: string
+          country_code: string | null
           id: string
           kind: string
           label: string
-          lat: number
-          lng: number
+          lat: number | null
+          lng: number | null
+          public_id: string | null
           score: number
           sublabel: string
-          username: string
         }[]
       }
       sync_profile_method: { Args: { p_method_id: string }; Returns: number }
-      username_available: { Args: { p_username: string }; Returns: boolean }
-      username_is_valid: { Args: { p: string }; Returns: boolean }
     }
     Enums: {
       activity_kind: "causa_publicada" | "causa_cerrada" | "causa_finalizada"

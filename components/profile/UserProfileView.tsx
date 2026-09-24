@@ -20,13 +20,14 @@ import { CauseCard, CauseCardProps } from "@/components/feed/CauseCard";
 import { createClient } from "@/lib/supabase/client";
 import { getCountryName } from "@/lib/geo/countries";
 import { toggleFollowAction } from "@/app/actions/social";
+import { urlDeAvatar } from "@/lib/media";
 
 
 interface UserProfileViewProps {
   profile: {
     id: string;
     full_name: string;
-    username: string;
+    public_id: string;
     avatar_url?: string | null;
     bio?: string | null;
     city?: string | null;
@@ -74,7 +75,7 @@ export function UserProfileView({
 
   const handleToggleFollow = async () => {
     if (!currentUserId) {
-      router.push(`/entrar?next=/u/${profile.username}`);
+      router.push(`/entrar?next=/u/${profile.public_id}`);
       return;
     }
 
@@ -101,7 +102,12 @@ export function UserProfileView({
   const handleDeleteDraft = async (draftId: string) => {
     if (!confirm("¿Seguro que deseas eliminar este borrador?")) return;
 
-    await supabase.from("causes").delete().eq("id", draftId);
+    const { error } = await supabase.from("causes").delete().eq("id", draftId);
+    if (error) {
+      console.error("Eliminar borrador:", error.code, error.message);
+      alert(`No pudimos eliminar el borrador: ${error.message}`);
+      return;
+    }
     setCausesList((prev) => prev.filter((c) => c.id !== draftId));
   };
 
@@ -112,9 +118,9 @@ export function UserProfileView({
         <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
           <div className="flex items-center gap-4">
             <div className="w-20 h-20 sm:w-24 sm:h-24 rounded-full overflow-hidden bg-[var(--avatar)] flex-shrink-0 flex items-center justify-center font-mono font-semibold text-[var(--ink-2)] text-2xl sm:text-3xl border-2 border-[var(--line)] shadow-inner select-none">
-              {profile.avatar_url ? (
+              {urlDeAvatar(profile.avatar_url) ? (
                 <img
-                  src={profile.avatar_url}
+                  src={urlDeAvatar(profile.avatar_url)!}
                   alt={profile.full_name}
                   className="w-full h-full object-cover"
                 />
@@ -133,7 +139,7 @@ export function UserProfileView({
               <h1 className="text-xl sm:text-2xl font-black text-text-primary tracking-tight">
                 {profile.full_name}
               </h1>
-              <p className="text-xs text-text-secondary font-mono">@{profile.username}</p>
+              <p className="text-xs text-text-secondary font-mono">{profile.public_id}</p>
               {locationText && (
                 <p className="text-xs text-text-secondary flex items-center gap-1 pt-0.5">
                   <IconoMarcador size={13} className="text-accent" />
@@ -272,7 +278,7 @@ export function UserProfileView({
                   author={{
                     id: profile.id,
                     full_name: profile.full_name,
-                    username: profile.username,
+                    public_id: profile.public_id,
                     avatar_url: profile.avatar_url,
                   }}
                   media={causeMedia}

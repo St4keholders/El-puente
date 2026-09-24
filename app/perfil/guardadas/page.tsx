@@ -65,7 +65,7 @@ export default async function CausasGuardadasPage() {
         author:profiles!causes_author_id_fkey(
           id,
           full_name,
-          username,
+          public_id,
           avatar_url
         ),
         media:cause_media(
@@ -95,7 +95,7 @@ export default async function CausasGuardadasPage() {
         const author = c.author || {
           id: "unknown",
           full_name: "Usuario",
-          username: "usuario",
+          public_id: "",
           avatar_url: null,
         };
 
@@ -132,7 +132,7 @@ export default async function CausasGuardadasPage() {
           author: {
             id: author.id,
             full_name: author.full_name || "Usuario",
-            username: author.username || "usuario",
+            public_id: author.public_id || "",
             avatar_url: author.avatar_url,
           },
           media,

@@ -144,7 +144,7 @@ export function MisCausasClient({
         author: {
           id: c.profiles?.id || userId,
           full_name: c.profiles?.full_name || "Mi perfil",
-          username: c.profiles?.username || "yo",
+          public_id: c.profiles?.public_id || "",
           avatar_url: c.profiles?.avatar_url,
         },
         media,
@@ -188,7 +188,7 @@ export function MisCausasClient({
             collection_type,
             is_example,
             first_support_confirmed_at,
-            profiles:author_id(id, full_name, username, avatar_url),
+            profiles:author_id(id, full_name, public_id, avatar_url),
             cause_media(id, storage_path, kind, position, width, height),
             cause_results(summary, amount_received),
             cause_supplies(id, name, unit, quantity_needed, quantity_received, position)

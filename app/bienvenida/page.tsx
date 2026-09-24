@@ -1,6 +1,7 @@
 import React from "react";
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
+import { urlDeAvatar } from "@/lib/media";
 import { BienvenidaForm } from "./BienvenidaForm";
 
 export const dynamic = "force-dynamic";
@@ -25,11 +26,16 @@ export default async function BienvenidaPage({ searchParams }: BienvenidaPagePro
   }
 
   // Comprobar estado de perfil existente
-  const { data: profile } = await supabase
+  const { data: profile, error: profileErr } = await supabase
     .from("profiles")
-    .select("onboarding_completed_at, full_name, username, avatar_url")
+    .select("onboarding_completed_at, full_name, public_id, avatar_url, country_code, city")
     .eq("id", user.id)
     .maybeSingle();
+
+  if (profileErr) {
+    console.error("/bienvenida profiles:", profileErr.code, profileErr.message);
+    throw new Error(`No pudimos leer tu perfil: ${profileErr.message}`);
+  }
 
   // Si ya completó onboarding, llevarlo de inmediato a su destino
   if (profile?.onboarding_completed_at) {
@@ -41,42 +47,17 @@ export default async function BienvenidaPage({ searchParams }: BienvenidaPagePro
     profile?.full_name ||
     meta.full_name ||
     meta.name ||
-    user.email?.split("@")[0] ||
     "";
   const avatarUrl =
-    profile?.avatar_url || meta.avatar_url || meta.picture || null;
-
-  // Sugerir nombre de usuario: primer nombre y primer apellido sin tildes en minúsculas unidos por _
-  let suggested = "";
-  if (profile?.username && !profile.username.startsWith("id_")) {
-    suggested = profile.username;
-  } else {
-    const cleanNorm = initialName
-      .normalize("NFD")
-      .replace(/[\u0300-\u036f]/g, "")
-      .toLowerCase()
-      .replace(/[^a-z0-9\s]/g, "")
-      .trim();
-
-    const parts = cleanNorm.split(/\s+/).filter(Boolean);
-    if (parts.length >= 2) {
-      suggested = `${parts[0]}_${parts[1]}`.slice(0, 24);
-    } else if (parts.length === 1) {
-      suggested = parts[0].slice(0, 24);
-    } else {
-      suggested = (user.email?.split("@")[0] || "usuario")
-        .toLowerCase()
-        .replace(/[^a-z0-9_]/g, "")
-        .slice(0, 24);
-    }
-  }
+    urlDeAvatar(profile?.avatar_url) || meta.avatar_url || meta.picture || null;
 
   return (
     <BienvenidaForm
-      userId={user.id}
       userEmail={user.email || ""}
       initialName={initialName}
-      suggestedUsername={suggested}
+      publicId={profile?.public_id || null}
+      initialCountry={profile?.country_code || ""}
+      initialCity={profile?.city || ""}
       avatarUrl={avatarUrl}
       next={next}
     />

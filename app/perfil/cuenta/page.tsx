@@ -45,8 +45,8 @@ export default function CuentaYPrivacidadPage() {
   // Delete account
   const handleDeleteAccount = async () => {
     if (!profile) return;
-    if (confirmInput.trim().toLowerCase() !== profile.username.toLowerCase()) {
-      setDeleteError("El nombre de usuario escrito no coincide.");
+    if (confirmInput.trim().toUpperCase() !== profile.public_id.toUpperCase()) {
+      setDeleteError("El ID público escrito no coincide.");
       return;
     }
 
@@ -60,14 +60,14 @@ export default function CuentaYPrivacidadPage() {
       }
       window.location.href = "/?cuenta_eliminada=1";
     } catch (err: any) {
-      console.error("Error deleting account:", err);
+      console.error("Error deleting account:", err?.code, err?.message);
       setDeleteError(err?.message || "Ocurrió un error al eliminar tu cuenta.");
       setDeleting(false);
     }
   };
 
   const email = user?.email || "Cargando...";
-  const username = profile?.username || "";
+  const publicId = profile?.public_id || "";
 
   return (
     <div className="space-y-6 max-w-2xl">
@@ -139,7 +139,7 @@ export default function CuentaYPrivacidadPage() {
             </span>
             <div className="text-xs text-[var(--ink-2)] leading-relaxed">
               <strong className="text-[var(--ink)] font-semibold">
-                Nombre completo, nombre de usuario (@{username || "usuario"}), foto, biografía, país y ciudad:
+                Nombre completo, ID público ({publicId || "PNT-XXXXXX"}), foto, biografía, país y ciudad:
               </strong>{" "}
               visibles en tu perfil comunitario y al crear causas.
             </div>
@@ -295,7 +295,7 @@ export default function CuentaYPrivacidadPage() {
             <div className="p-4 rounded-xl bg-rose-500/10 border border-rose-500/20 text-xs text-[var(--ink-2)] space-y-2">
               <p className="font-semibold text-rose-300">Se eliminará permanentemente:</p>
               <ul className="list-disc list-inside space-y-1 text-[var(--ink-2)]">
-                <li>Tu perfil (@{username}) y biografía</li>
+                <li>Tu perfil ({publicId}) y biografía</li>
                 <li>Tus causas creadas y borradores</li>
                 <li>Tus métodos de donación guardados</li>
                 <li>Tus comentarios, fotos y videos subidos</li>
@@ -305,13 +305,13 @@ export default function CuentaYPrivacidadPage() {
 
             <div className="space-y-2">
               <label htmlFor="confirm-user-input" className="block text-xs font-medium text-[var(--ink)]">
-                Escribe tu nombre de usuario <span className="font-mono text-[var(--accent)]">@{username}</span> para confirmar:
+                Escribe tu ID público <span className="font-mono text-[var(--accent)]">{publicId}</span> para confirmar:
               </label>
               <input
                 id="confirm-user-input"
                 type="text"
                 autoComplete="off"
-                placeholder={username}
+                placeholder={publicId}
                 value={confirmInput}
                 onChange={(e) => setConfirmInput(e.target.value)}
                 className="w-full px-3.5 py-2.5 rounded-xl bg-[var(--field)] border border-[var(--line)] text-sm text-[var(--ink)] focus:outline-none focus:border-rose-500 transition-colors font-mono"
@@ -335,7 +335,7 @@ export default function CuentaYPrivacidadPage() {
               </button>
               <button
                 type="button"
-                disabled={deleting || confirmInput.trim().toLowerCase() !== username.toLowerCase()}
+                disabled={deleting || confirmInput.trim().toUpperCase() !== publicId.toUpperCase()}
                 onClick={handleDeleteAccount}
                 className="inline-flex items-center gap-2 px-4 py-2 text-xs font-semibold rounded-xl bg-rose-500 hover:bg-rose-600 text-white shadow transition-all disabled:opacity-40"
               >

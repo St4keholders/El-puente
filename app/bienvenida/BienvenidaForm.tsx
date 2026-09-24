@@ -1,21 +1,19 @@
 "use client";
 
-import React, { useState, useEffect, useRef } from "react";
+import React, { useState } from "react";
 import Link from "next/link";
 import { Glass } from "@/components/ui/Glass";
-import {
-  IconoCargando,
-  IconoAlerta,
-  IconoCheckCirculo,
-} from "@/components/iconos";
+import { IconoCargando, IconoAlerta } from "@/components/iconos";
 import { parsePhoneNumber, CountryCode } from "libphonenumber-js";
-import { completeOnboardingAction, checkUsernameAction } from "./actions";
+import { getAllCountries } from "@/lib/geo/countries";
+import { completeOnboardingAction } from "./actions";
 
 interface BienvenidaFormProps {
-  userId: string;
   userEmail: string;
   initialName: string;
-  suggestedUsername: string;
+  publicId: string | null;
+  initialCountry: string;
+  initialCity: string;
   avatarUrl: string | null;
   next: string;
 }
@@ -42,83 +40,29 @@ const PHONE_COUNTRIES = [
 export function BienvenidaForm({
   userEmail,
   initialName,
-  suggestedUsername,
+  publicId,
+  initialCountry,
+  initialCity,
   avatarUrl,
   next,
 }: BienvenidaFormProps) {
   const [fullName, setFullName] = useState(initialName);
-  const [username, setUsername] = useState(suggestedUsername);
-  const [usernameStatus, setUsernameStatus] = useState<
-    "idle" | "checking" | "available" | "taken" | "invalid"
-  >("idle");
-
+  const [countryCode, setCountryCode] = useState(initialCountry);
+  const [city, setCity] = useState(initialCity);
+  const countries = getAllCountries();
   const [phoneCountry, setPhoneCountry] = useState("CO");
   const [phoneNumber, setPhoneNumber] = useState("");
   const [acceptTerms, setAcceptTerms] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
 
-  const checkDebounceRef = useRef<any>(null);
-
-  // Comprobación en vivo del nombre de usuario mediante Server Action (300 ms debounce)
-  useEffect(() => {
-    const cleanUser = username.trim().toLowerCase();
-    clearTimeout(checkDebounceRef.current);
-
-    if (!cleanUser) {
-      setUsernameStatus("idle");
-      return;
-    }
-
-    if (!/^[a-z0-9_]{3,24}$/.test(cleanUser)) {
-      setUsernameStatus("invalid");
-      return;
-    }
-
-    setUsernameStatus("checking");
-    checkDebounceRef.current = setTimeout(async () => {
-      try {
-        // Ejecutar Server Action con tiempo límite de seguridad de 2s
-        const checkPromise = checkUsernameAction(cleanUser);
-        const timeoutPromise = new Promise<{ available: boolean }>((resolve) =>
-          setTimeout(() => resolve({ available: true }), 2000)
-        );
-
-        const res = await Promise.race([checkPromise, timeoutPromise]);
-        if (res.available) {
-          setUsernameStatus("available");
-        } else {
-          setUsernameStatus("taken");
-        }
-      } catch {
-        setUsernameStatus("idle");
-      }
-    }, 300);
-
-    return () => clearTimeout(checkDebounceRef.current);
-  }, [username]);
-
-  const handleSignOut = () => {
-    window.location.href = "/auth/signout";
-  };
-
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setErrorMsg(null);
 
-    if (fullName.trim().length < 2) {
-      setErrorMsg("Escribe tu nombre completo (mínimo 2 caracteres).");
-      return;
-    }
-
-    const cleanUser = username.trim().toLowerCase();
-    if (!/^[a-z0-9_]{3,24}$/.test(cleanUser)) {
-      setErrorMsg("Solo minúsculas, números y _, entre 3 y 24 caracteres.");
-      return;
-    }
-
-    if (usernameStatus === "taken") {
-      setErrorMsg("Ese usuario ya lo tomó otra persona. Prueba con otro.");
+    const cleanName = fullName.trim().replace(/\s+/g, " ");
+    if (cleanName.length < 5 || cleanName.length > 80 || cleanName.split(" ").length < 2) {
+      setErrorMsg("Escribe tu nombre y apellidos (mínimo dos palabras, entre 5 y 80 caracteres).");
       return;
     }
 
@@ -146,9 +90,10 @@ export function BienvenidaForm({
 
     try {
       const res = await completeOnboardingAction({
-        fullName: fullName.trim(),
-        username: cleanUser,
+        fullName: cleanName,
         phoneNumber: formattedPhone,
+        countryCode: countryCode || null,
+        city: city.trim() || null,
         termsVersion: "v1.0",
         acceptTerms,
         next,
@@ -165,8 +110,8 @@ export function BienvenidaForm({
 
       window.location.href = res.redirect || "/";
     } catch (err: any) {
-      console.error("Error submitting onboarding:", err);
-      setErrorMsg("Ocurrió un error inesperado al guardar. Intenta de nuevo.");
+      console.error("Error submitting onboarding:", err?.code, err?.message);
+      setErrorMsg(`Ocurrió un error inesperado al guardar: ${err?.message || "error desconocido"}`);
       setSubmitting(false);
     }
   };
@@ -225,13 +170,13 @@ export function BienvenidaForm({
               htmlFor="fullName"
               className="block text-xs font-semibold uppercase tracking-wider text-[var(--ink-2)] mb-1.5"
             >
-              Nombre completo *
+              Nombre y apellidos *
             </label>
             <input
               id="fullName"
               type="text"
               required
-              minLength={2}
+              minLength={5}
               maxLength={80}
               value={fullName}
               onChange={(e) => setFullName(e.target.value)}
@@ -242,60 +187,53 @@ export function BienvenidaForm({
             <p className="mt-1 text-[11px] text-[var(--ink-3)]">
               Así te verán quienes apoyen tu causa.
             </p>
+            <p className="mt-1 text-[11px] text-[var(--ink-3)]">
+              Tu ID será <strong className="font-mono text-[var(--ink)]">{publicId || "PNT-XXXXXX"}</strong>. Sirve para que te identifiquen y no se puede cambiar.
+            </p>
           </div>
 
-          {/* Nombre de usuario (Sección 1.4: sugerido, con comprobación en vivo) */}
-          <div>
-            <div className="flex items-center justify-between mb-1.5">
+          {/* País y ciudad (opcionales) */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <div>
               <label
-                htmlFor="username"
-                className="block text-xs font-semibold uppercase tracking-wider text-[var(--ink-2)]"
+                htmlFor="countryCode"
+                className="block text-xs font-semibold uppercase tracking-wider text-[var(--ink-2)] mb-1.5"
               >
-                Nombre de usuario *
+                País
               </label>
-              {usernameStatus === "checking" && (
-                <span className="text-[11px] text-[var(--ink-3)] font-mono flex items-center gap-1">
-                  <IconoCargando size={11} className="animate-spin" />
-                  Comprobando...
-                </span>
-              )}
-              {usernameStatus === "available" && (
-                <span className="text-[11px] text-emerald-500 font-semibold font-mono flex items-center gap-1">
-                  <IconoCheckCirculo size={12} />
-                  Disponible
-                </span>
-              )}
-              {usernameStatus === "taken" && (
-                <span className="text-[11px] text-red-500 font-semibold font-mono">
-                  Ya está en uso
-                </span>
-              )}
-              {usernameStatus === "invalid" && (
-                <span className="text-[11px] text-amber-500 font-mono">
-                  3 a 24 caract., a-z, 0-9, _
-                </span>
-              )}
-            </div>
-            <div className="relative">
-              <span className="absolute left-3.5 top-1/2 -translate-y-1/2 text-sm font-mono text-[var(--ink-3)]">
-                @
-              </span>
-              <input
-                id="username"
-                type="text"
-                required
-                minLength={3}
-                maxLength={24}
-                value={username}
-                onChange={(e) => setUsername(e.target.value.toLowerCase().trim())}
-                placeholder="usuario"
+              <select
+                id="countryCode"
+                value={countryCode}
+                onChange={(e) => setCountryCode(e.target.value)}
                 disabled={submitting}
-                className="w-full rounded-2xl border border-[var(--line)] bg-[var(--field)] py-2.5 pl-8 pr-3 text-sm font-mono text-[var(--ink)] placeholder-[var(--ink-3)] focus:border-[var(--accent)] focus:outline-none focus:ring-1 focus:ring-[var(--accent)] transition-all"
+                className="w-full rounded-2xl border border-[var(--line)] bg-[var(--field)] px-3 py-2.5 text-sm text-[var(--ink)] focus:border-[var(--accent)] focus:outline-none transition-all"
+              >
+                <option value="">Selecciona un país</option>
+                {countries.map((c) => (
+                  <option key={c.id} value={c.id}>
+                    {c.name}
+                  </option>
+                ))}
+              </select>
+            </div>
+            <div>
+              <label
+                htmlFor="city"
+                className="block text-xs font-semibold uppercase tracking-wider text-[var(--ink-2)] mb-1.5"
+              >
+                Ciudad
+              </label>
+              <input
+                id="city"
+                type="text"
+                maxLength={80}
+                value={city}
+                onChange={(e) => setCity(e.target.value)}
+                placeholder="Ej. Medellín"
+                disabled={submitting}
+                className="w-full rounded-2xl border border-[var(--line)] bg-[var(--field)] px-4 py-2.5 text-sm text-[var(--ink)] placeholder-[var(--ink-3)] focus:border-[var(--accent)] focus:outline-none focus:ring-1 focus:ring-[var(--accent)] transition-all"
               />
             </div>
-            <p className="mt-1 text-[11px] text-[var(--ink-3)]">
-              Solo minúsculas, números y _, entre 3 y 24 caracteres.
-            </p>
           </div>
 
           {/* Número de contacto (opcional) */}
@@ -376,13 +314,7 @@ export function BienvenidaForm({
           <div className="pt-4">
             <button
               type="submit"
-              disabled={
-                submitting ||
-                !acceptTerms ||
-                usernameStatus === "taken" ||
-                usernameStatus === "invalid" ||
-                username.trim().length < 3
-              }
+              disabled={submitting || !acceptTerms}
               className="w-full flex items-center justify-center gap-2 rounded-2xl bg-[var(--accent)] py-3 px-4 text-sm font-semibold text-white shadow-lg shadow-[var(--accent)]/20 hover:brightness-110 active:scale-[0.99] disabled:opacity-50 disabled:cursor-not-allowed transition-all cursor-pointer"
             >
               {submitting ? (

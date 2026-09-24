@@ -17,6 +17,7 @@ import { formatDistanceToNow } from "@/lib/utils/date";
 import { getCountryName } from "@/lib/geo/countries";
 import { toggleFollowAction } from "@/app/actions/social";
 import { MarcoImagen } from "@/components/media/MarcoImagen";
+import { urlDeAvatar } from "@/lib/media";
 
 export interface CauseMediaItem {
   id?: string;
@@ -31,7 +32,7 @@ export interface CauseMediaItem {
 export interface CauseAuthor {
   id: string;
   full_name: string;
-  username: string;
+  public_id: string;
   avatar_url?: string | null;
 }
 
@@ -57,7 +58,6 @@ export interface CauseCardProps {
   recentComments?: Array<{
     id: string;
     author_name: string;
-    author_username: string;
     body: string;
   }>;
   resultsSummary?: string | null;
@@ -176,13 +176,20 @@ export function CauseCard({
           url: shareUrl,
         });
         return;
-      } catch {}
+      } catch (err: any) {
+        // Cancelar el diálogo de compartir no es un error
+        if (err?.name === "AbortError") return;
+        console.error("No se pudo compartir:", err?.name, err?.message);
+      }
     }
     try {
       await navigator.clipboard.writeText(shareUrl);
       setCopiedLink(true);
       setTimeout(() => setCopiedLink(false), 2000);
-    } catch {}
+    } catch (err: any) {
+      console.error("No se pudo copiar el enlace:", err?.name, err?.message);
+      alert("No pudimos copiar el enlace.");
+    }
   };
 
   const handleSave = () => {
@@ -352,12 +359,12 @@ export function CauseCard({
               <div className="flex items-center justify-between gap-3 mb-3">
                 <div className="flex items-center gap-2.5 min-w-0">
                   <Link
-                    href={isPreview ? "#" : `/u/${author.username}`}
+                    href={isPreview ? "#" : `/u/${author.public_id}`}
                     className="relative w-9 h-9 rounded-full overflow-hidden flex-shrink-0 flex items-center justify-center bg-[var(--avatar)] border border-[var(--line)] text-[var(--ink-2)] font-mono text-xs font-semibold select-none"
                   >
-                    {author.avatar_url ? (
+                    {urlDeAvatar(author.avatar_url) ? (
                       <img
-                        src={author.avatar_url}
+                        src={urlDeAvatar(author.avatar_url)!}
                         alt={author.full_name}
                         className="w-full h-full object-cover"
                       />
@@ -369,15 +376,12 @@ export function CauseCard({
                   <div className="flex flex-col min-w-0 leading-tight">
                     <div className="flex items-center gap-2">
                       <Link
-                        href={isPreview ? "#" : `/u/${author.username}`}
+                        href={isPreview ? "#" : `/u/${author.public_id}`}
                         className="font-medium text-sm text-[var(--ink)] hover:text-[var(--accent)] truncate transition-colors"
                       >
                         {author.full_name}
                       </Link>
                     </div>
-                    <span className="text-xs text-[var(--ink-3)] font-mono truncate">
-                      @{author.username}
-                    </span>
                   </div>
                 </div>
 
