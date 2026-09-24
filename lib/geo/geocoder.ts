@@ -139,8 +139,9 @@ export class HybridGeocoder implements GeocoderProvider {
             }
           }
         }
-      } catch {
-        // Fallback gracefully to local results
+      } catch (err: any) {
+        // Sin red o servicio caído: quedan los resultados locales
+        console.error("Geocoder remoto:", err?.name, err?.message);
       }
     }
 

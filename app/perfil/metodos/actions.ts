@@ -104,12 +104,15 @@ export async function updatePaymentMethodAction(id: string, data: UpdateMethodIn
     }
 
     if (data.syncActiveCauses) {
-      try {
-        await (supabase.rpc as any)("sync_profile_method", {
-          p_method_id: id,
-        });
-      } catch (rpcErr) {
-        console.warn("sync_profile_method warning:", rpcErr);
+      const { error: rpcErr } = await supabase.rpc("sync_profile_method", {
+        p_method_id: id,
+      });
+      if (rpcErr) {
+        console.error("sync_profile_method:", rpcErr.code, rpcErr.message);
+        return {
+          success: false,
+          error: `El método se guardó, pero no pudimos actualizarlo en tus causas: ${rpcErr.message}`,
+        };
       }
     }
 
@@ -164,7 +167,7 @@ export async function reorderPaymentMethodsAction(orderedIds: string[]) {
       return { success: false, error: "SIN_SESION" };
     }
 
-    await Promise.all(
+    const results = await Promise.all(
       orderedIds.map((id, idx) =>
         supabase
           .from("profile_donation_methods")
@@ -173,6 +176,11 @@ export async function reorderPaymentMethodsAction(orderedIds: string[]) {
           .eq("owner_id", user.id)
       )
     );
+    const failed = results.find((r) => r.error);
+    if (failed?.error) {
+      console.error("Error reordering payment methods:", failed.error.code, failed.error.message);
+      return { success: false, error: `No pudimos guardar el nuevo orden: ${failed.error.message}` };
+    }
 
     revalidatePath("/perfil/metodos");
     return { success: true };

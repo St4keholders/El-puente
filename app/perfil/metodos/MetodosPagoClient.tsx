@@ -105,16 +105,16 @@ export function MetodosPagoClient({
     setModalError(null);
 
     // Contar causas activas/borradores asociadas a este método
-    try {
-      const { count } = await supabase
-        .from("donation_methods")
-        .select("id, causes!inner(status)", { count: "exact", head: true })
-        .eq("profile_method_id", m.id)
-        .in("causes.status", ["borrador", "activa"]);
-      setAffectedCausesCount(count || 0);
-    } catch {
-      setAffectedCausesCount(0);
+    const { count, error } = await supabase
+      .from("donation_methods")
+      .select("id, causes!inner(status)", { count: "exact", head: true })
+      .eq("profile_method_id", m.id)
+      .in("causes.status", ["borrador", "activa"]);
+    if (error) {
+      console.error("Contar causas del método:", error.code, error.message);
+      setModalError(`No pudimos saber cuántas causas usan este método: ${error.message}`);
     }
+    setAffectedCausesCount(count || 0);
     setIsModalOpen(true);
   };
 
@@ -126,13 +126,21 @@ export function MetodosPagoClient({
     const [moved] = newMethods.splice(index, 1);
     newMethods.splice(targetIndex, 0, moved);
 
+    const previous = methods;
     setMethods(newMethods);
 
     try {
-      await reorderPaymentMethodsAction(newMethods.map((m) => m.id));
+      const res = await reorderPaymentMethodsAction(newMethods.map((m) => m.id));
+      if (res && res.success === false) {
+        setMethods(previous);
+        setErrorMsg(res.error || "No pudimos guardar el nuevo orden.");
+        return;
+      }
       router.refresh();
-    } catch (e) {
-      console.warn("Error reordering:", e);
+    } catch (e: any) {
+      console.error("Error reordering:", e?.code, e?.message);
+      setMethods(previous);
+      setErrorMsg("No pudimos guardar el nuevo orden.");
     }
   };
 
@@ -148,7 +156,8 @@ export function MetodosPagoClient({
       } else {
         setErrorMsg(res.error || "No pudimos eliminar el método.");
       }
-    } catch {
+    } catch (err: any) {
+      console.error("Eliminar método:", err?.code, err?.message);
       setErrorMsg("No pudimos eliminar el método.");
     }
   };

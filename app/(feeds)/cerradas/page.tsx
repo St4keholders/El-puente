@@ -45,6 +45,10 @@ export default async function CerradasPage(props: CerradasPageProps) {
     10
   );
 
+  if (initialResult.error) {
+    throw new Error(initialResult.error);
+  }
+
   return (
     <main className="min-h-screen pb-24">
       <FeedView

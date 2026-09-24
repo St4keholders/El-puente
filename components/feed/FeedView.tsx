@@ -254,6 +254,11 @@ export function FeedView({
 
     setIsLoadingMore(false);
 
+    if (res.error) {
+      setLoadError(res.error);
+      return;
+    }
+
     if (res.causes.length > 0) {
       setCauses((prev) => {
         const existingIds = new Set(prev.map((c) => c.id));
@@ -589,6 +594,18 @@ export function FeedView({
               {isLoadingMore && (
                 <div className="py-8 flex items-center justify-center text-xs font-mono text-[var(--ink-3)] animate-pulse">
                   Cargando más causas...
+                </div>
+              )}
+              {loadError && !isLoadingMore && (
+                <div className="py-4 flex items-center justify-center gap-2 text-xs text-rose-400">
+                  <span>{loadError}</span>
+                  <button
+                    type="button"
+                    onClick={() => loadNextPage()}
+                    className="font-semibold underline cursor-pointer"
+                  >
+                    Reintentar
+                  </button>
                 </div>
               )}
 
