@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect, useRef, useTransition, useMemo } from "react";
+import React, { useState, useEffect, useRef, useMemo, useCallback } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
 import {
@@ -25,14 +25,25 @@ import {
   IconoInfo,
 } from "@/components/iconos";
 import { Glass } from "@/components/ui/Glass";
-import { useUser } from "@/lib/hooks/useUser";
-import { createClient } from "@/lib/supabase/client";
-import { comprimirFotoCausa, validarVideo, generarPortadaVideo } from "@/lib/media/comprimir";
-import { getUserStorageUsage, MAX_USER_STORAGE_BYTES } from "@/lib/media";
+import { comprimirFotoCausa } from "@/lib/media/comprimir";
+import { urlDeMedio } from "@/lib/media";
 import { defaultGeocoder, GeocodedCity } from "@/lib/geo/geocoder";
 import mundoData from "@/lib/geo/mundo.json";
 import { CauseCard } from "@/components/feed/CauseCard";
-import { initDraftAction, uploadCauseMediaAction, deleteCauseMediaAction } from "./actions";
+import {
+  initDraftAction,
+  uploadCauseMediaAction,
+  deleteCauseMediaAction,
+  guardarBorradorAction,
+  guardarInsumosAction,
+  eliminarInsumoAction,
+  agregarMetodoAction,
+  quitarMetodoAction,
+  reordenarMediosAction,
+  guardarTelefonoAction,
+  publicarCausaAction,
+  type DraftFields,
+} from "./actions";
 import type { Database } from "@/lib/database.types";
 import { parsePhoneNumberFromString, type CountryCode } from "libphonenumber-js";
 
@@ -144,8 +155,7 @@ function NuevaCausaContent({
 
   const user = currentUser;
   const profile = currentUserProfile;
-  const hasPhone = hasPhoneInitial;
-  const supabase = createClient();
+  const [hasPhone, setHasPhone] = useState(hasPhoneInitial);
 
   // Wizard state
   const [currentStep, setCurrentStep] = useState(1);
@@ -153,7 +163,15 @@ function NuevaCausaContent({
   const [initializing, setInitializing] = useState(true);
   const [initError, setInitError] = useState<string | null>(null);
   const [retryCount, setRetryCount] = useState(0);
-  const [autoSaving, setAutoSaving] = useState(false);
+  // Indicador de guardado: nunca se queda girando; o guarda, o muestra el error con Reintentar
+  const [saveState, setSaveState] = useState<"idle" | "saving" | "saved" | "error">("idle");
+  const [savedAt, setSavedAt] = useState<string | null>(null);
+  const [saveError, setSaveError] = useState<string | null>(null);
+  const saveSeq = useRef(0);
+  // Errores de validación por campo (se muestran debajo del campo que falta)
+  const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
+  const [advancing, setAdvancing] = useState(false);
+  const [actionError, setActionError] = useState<string | null>(null);
   const [publishError, setPublishError] = useState<{ message: string; step?: number } | null>(null);
   const [isPublishing, setIsPublishing] = useState(false);
 
@@ -205,7 +223,6 @@ function NuevaCausaContent({
   // Step 5: Phone requirement
   const [contactPhone, setContactPhone] = useState("");
   const [contactCountryCode, setContactCountryCode] = useState("CO");
-  const [phoneError, setPhoneError] = useState<string | null>(null);
 
   // Countries from mundo.json
   const countries = useMemo(() => {
@@ -241,7 +258,7 @@ function NuevaCausaContent({
           return;
         }
 
-        if (!res.success || !res.draft) {
+        if (!res.success) {
           setInitError(res.error || "No pudimos inicializar el borrador.");
           return;
         }
@@ -329,7 +346,7 @@ function NuevaCausaContent({
           );
         }
       } catch (err: any) {
-        console.error("Error initializing draft:", err);
+        console.error("Error initializing draft:", err?.code, err?.message);
         setInitError(err?.message || "No se pudo inicializar el borrador.");
       } finally {
         setInitializing(false);
@@ -339,56 +356,66 @@ function NuevaCausaContent({
     initDraft();
   }, [user, retryCount]);
 
-  // 2. Debounced auto-save (800ms)
+  // 2. Guardado del borrador en el servidor. Devuelve true si quedó guardado.
+  const draftFields: DraftFields = useMemo(
+    () => ({
+      title: title || null,
+      category,
+      description: description || null,
+      country_code: countryCode || null,
+      city: city || null,
+      region: region || null,
+      lat,
+      lng,
+      goal_amount: hasGoal && typeof goalAmount === "number" && goalAmount > 0 ? goalAmount : null,
+      currency,
+      collection_type: collectionType,
+      supplies_instructions: suppliesInstructions || null,
+    }),
+    [title, category, description, countryCode, city, region, lat, lng, hasGoal, goalAmount, currency, collectionType, suppliesInstructions]
+  );
+
+  const guardarAhora = useCallback(async (): Promise<boolean> => {
+    if (!causeId) return false;
+    const seq = ++saveSeq.current;
+    setSaveState("saving");
+    setSaveError(null);
+    try {
+      const res = await guardarBorradorAction(causeId, draftFields);
+      if (seq !== saveSeq.current) return res.success;
+      if (!res.success) {
+        console.error("Guardado del borrador:", res.code, res.error);
+        setSaveState("error");
+        setSaveError(res.error);
+        return false;
+      }
+      setSaveState("saved");
+      setSavedAt(res.savedAt);
+      return true;
+    } catch (err: any) {
+      console.error("Guardado del borrador:", err?.code, err?.message);
+      if (seq === saveSeq.current) {
+        setSaveState("error");
+        setSaveError(`No se pudo guardar el borrador: ${err?.message || "error de conexión"}`);
+      }
+      return false;
+    }
+  }, [causeId, draftFields]);
+
+  // Guardado automático con 800 ms de espera
+  const firstAutosave = useRef(true);
   useEffect(() => {
     if (!causeId || initializing) return;
-
-    const timer = setTimeout(async () => {
-      setAutoSaving(true);
-      try {
-        await supabase
-          .from("causes")
-          .update({
-            title: title || null,
-            category,
-            description: description || null,
-            country_code: countryCode || null,
-            city: city || null,
-            region: region || null,
-            lat,
-            lng,
-            goal_amount: hasGoal && typeof goalAmount === "number" ? goalAmount : null,
-            currency,
-            collection_type: collectionType,
-            supplies_instructions: suppliesInstructions || null,
-            updated_at: new Date().toISOString(),
-          })
-          .eq("id", causeId);
-      } catch (err) {
-        console.error("Auto-save error:", err);
-      } finally {
-        setAutoSaving(false);
-      }
+    if (firstAutosave.current) {
+      // Recién cargado de la base: no hay nada nuevo que guardar
+      firstAutosave.current = false;
+      return;
+    }
+    const timer = setTimeout(() => {
+      guardarAhora();
     }, 800);
-
     return () => clearTimeout(timer);
-  }, [
-    causeId,
-    title,
-    category,
-    description,
-    countryCode,
-    city,
-    region,
-    lat,
-    lng,
-    hasGoal,
-    goalAmount,
-    currency,
-    collectionType,
-    suppliesInstructions,
-    initializing,
-  ]);
+  }, [causeId, initializing, guardarAhora]);
 
   // City autocomplete search
   useEffect(() => {
@@ -402,7 +429,8 @@ function NuevaCausaContent({
       try {
         const results = await defaultGeocoder.searchCities(citySearchQuery, countryCode);
         setCitySuggestions(results);
-      } catch {
+      } catch (err: any) {
+        console.error("Búsqueda de ciudades:", err?.name, err?.message);
         setCitySuggestions([]);
       } finally {
         setSearchingCities(false);
@@ -457,8 +485,9 @@ function NuevaCausaContent({
     if (!files.length || !causeId || !user) return;
     if (fileInputRef.current) fileInputRef.current.value = "";
 
-    const currentImages = mediaList.filter((m) => m.kind === "imagen").length;
-    const currentVideos = mediaList.filter((m) => m.kind === "video").length;
+    let currentImages = mediaList.filter((m) => m.kind === "imagen" && !m.error).length;
+    let currentVideos = mediaList.filter((m) => m.kind === "video" && !m.error).length;
+    let nextPosition = mediaList.length;
 
     for (const file of files) {
       const fileName = file.name || "";
@@ -476,8 +505,10 @@ function NuevaCausaContent({
         continue;
       }
 
+      if (isImage) currentImages++;
+      else currentVideos++;
       const tempId = crypto.randomUUID();
-      const nextPos = mediaList.length;
+      const nextPos = nextPosition++;
       let previewUrl = "";
       try {
         previewUrl = URL.createObjectURL(file);
@@ -510,8 +541,9 @@ function NuevaCausaContent({
             fileToUpload = compressed.fullFile;
             width = compressed.width;
             height = compressed.height;
-          } catch (e) {
-            console.warn("Canvas compression skipped, uploading original file:", e);
+          } catch (e: any) {
+            // Formatos que el navegador no puede dibujar (p. ej. HEIC) se suben tal cual
+            console.error("No se pudo comprimir la foto, se sube el original:", e?.name, e?.message);
             fileToUpload = file;
           }
         }
@@ -548,7 +580,7 @@ function NuevaCausaContent({
           )
         );
       } catch (err: any) {
-        console.error("Upload error:", err);
+        console.error("Upload error:", err?.code, err?.message);
         setMediaList((prev) =>
           prev.map((m) =>
             m.id === tempId
@@ -568,10 +600,23 @@ function NuevaCausaContent({
     const item = mediaList[index];
     if (!item) return;
 
-    setMediaList((prev) => prev.filter((_, i) => i !== index));
+    // Los que fallaron al subir no tienen fila en la base
+    if (!item.id || item.error || item.isUploading) {
+      setMediaList((prev) => prev.filter((_, i) => i !== index));
+      return;
+    }
 
-    if (item.id && causeId) {
-      deleteCauseMediaAction(item.id, causeId).catch(() => {});
+    setActionError(null);
+    try {
+      const res = await deleteCauseMediaAction(item.id);
+      if (!res.success) {
+        setActionError(res.error);
+        return;
+      }
+      setMediaList((prev) => prev.filter((m) => m.id !== item.id));
+    } catch (err: any) {
+      console.error("Eliminar foto:", err?.code, err?.message);
+      setActionError(`No se pudo eliminar el archivo: ${err?.message || "error de conexión"}`);
     }
   };
 
@@ -585,19 +630,89 @@ function NuevaCausaContent({
     list[targetIdx] = temp;
 
     const reindexed = list.map((m, i) => ({ ...m, position: i }));
+    const previous = mediaList;
     setMediaList(reindexed);
 
-    for (const m of reindexed) {
-      if (m.id) {
-        await supabase.from("cause_media").update({ position: m.position }).eq("id", m.id);
+    if (!causeId) return;
+    setActionError(null);
+    try {
+      const res = await reordenarMediosAction(
+        causeId,
+        reindexed.filter((m) => m.id && !m.error && !m.isUploading).map((m) => m.id!)
+      );
+      if (!res.success) {
+        setMediaList(previous);
+        setActionError(res.error);
       }
+    } catch (err: any) {
+      console.error("Reordenar fotos:", err?.code, err?.message);
+      setMediaList(previous);
+      setActionError(`No se pudo guardar el nuevo orden: ${err?.message || "error de conexión"}`);
     }
   };
 
-  // Donation methods management
-  const handleToggleProfileMethod = async (pm: ProfileDonationMethod) => {
-    if (!causeId || !user) return;
+  // Donation methods management (todo pasa por el servidor y reporta el error real)
+  const toMethodItem = (created: any, position: number): DonationMethodItem => ({
+    id: created.id,
+    kind: created.kind,
+    provider: created.provider,
+    account_holder: created.account_holder,
+    account_value: created.account_value,
+    details: created.details || "",
+    position,
+    profile_method_id: created.profile_method_id || null,
+  });
 
+  const addMethod = async (
+    method: {
+      kind: DonationMethodKind;
+      provider: string;
+      account_holder: string;
+      account_value: string;
+      details?: string | null;
+      profile_method_id?: string | null;
+    },
+    guardarEnPerfil: boolean
+  ): Promise<boolean> => {
+    if (!causeId || !user) return false;
+    if (donationMethods.length >= 5) {
+      alert("Puedes agregar un máximo de 5 métodos por causa.");
+      return false;
+    }
+    const nextPos = donationMethods.length;
+    setActionError(null);
+    try {
+      const res = await agregarMetodoAction(
+        causeId,
+        {
+          kind: method.kind,
+          provider: method.provider,
+          account_holder: method.account_holder,
+          account_value: method.account_value,
+          details: method.details || null,
+          profile_method_id: method.profile_method_id || null,
+        },
+        nextPos,
+        guardarEnPerfil
+      );
+      if (!res.success) {
+        setActionError(res.error);
+        return false;
+      }
+      if (res.profileMethod) {
+        setProfileMethods((prev) => [...prev, res.profileMethod as ProfileDonationMethod]);
+      }
+      setDonationMethods((prev) => [...prev, toMethodItem(res.method, nextPos)]);
+      setFieldErrors((prev) => ({ ...prev, methods: "" }));
+      return true;
+    } catch (err: any) {
+      console.error("Agregar método:", err?.code, err?.message);
+      setActionError(`No se pudo guardar el método de donación: ${err?.message || "error de conexión"}`);
+      return false;
+    }
+  };
+
+  const handleToggleProfileMethod = async (pm: ProfileDonationMethod) => {
     const existing = donationMethods.find(
       (m) =>
         m.profile_method_id === pm.id ||
@@ -605,51 +720,9 @@ function NuevaCausaContent({
     );
 
     if (existing) {
-      if (existing.id) {
-        await supabase.from("donation_methods").delete().eq("id", existing.id);
-      }
-      setDonationMethods((prev) => prev.filter((m) => m !== existing));
+      await handleRemoveDonationMethod(existing.id);
     } else {
-      if (donationMethods.length >= 5) {
-        alert("Puedes agregar un máximo de 5 métodos por causa.");
-        return;
-      }
-
-      const nextPos = donationMethods.length;
-      const { data: created, error } = await supabase
-        .from("donation_methods")
-        .insert({
-          cause_id: causeId,
-          owner_id: user.id,
-          kind: pm.kind,
-          provider: pm.provider,
-          account_holder: pm.account_holder,
-          account_value: pm.account_value,
-          details: pm.details || null,
-          position: nextPos,
-          profile_method_id: pm.id,
-        })
-        .select()
-        .single();
-
-      if (error) {
-        alert("Error al vincular el método: " + error.message);
-        return;
-      }
-
-      setDonationMethods((prev) => [
-        ...prev,
-        {
-          id: created.id,
-          kind: created.kind,
-          provider: created.provider,
-          account_holder: created.account_holder,
-          account_value: created.account_value,
-          details: created.details || "",
-          position: nextPos,
-          profile_method_id: pm.id,
-        },
-      ]);
+      await addMethod({ ...pm, profile_method_id: pm.id }, false);
     }
   };
 
@@ -658,74 +731,8 @@ function NuevaCausaContent({
       alert("Por favor completa el proveedor, titular y cuenta.");
       return;
     }
-    if (!causeId || !user) return;
-    if (donationMethods.length >= 5) {
-      alert("Puedes agregar un máximo de 5 métodos por causa.");
-      return;
-    }
-
-    let profileMethodId: string | null = null;
-
-    if (saveInProfile) {
-      try {
-        const { data: pmCreated, error: pmErr } = await supabase
-          .from("profile_donation_methods")
-          .insert({
-            owner_id: user.id,
-            kind: newMethod.kind,
-            provider: newMethod.provider,
-            account_holder: newMethod.account_holder,
-            account_value: newMethod.account_value,
-            details: newMethod.details || null,
-            position: profileMethods.length,
-          })
-          .select()
-          .single();
-
-        if (!pmErr && pmCreated) {
-          profileMethodId = pmCreated.id;
-          setProfileMethods((prev) => [...prev, pmCreated as ProfileDonationMethod]);
-        }
-      } catch (e) {
-        console.warn("Could not save method to profile:", e);
-      }
-    }
-
-    const nextPos = donationMethods.length;
-    const { data: created, error } = await supabase
-      .from("donation_methods")
-      .insert({
-        cause_id: causeId,
-        owner_id: user.id,
-        kind: newMethod.kind,
-        provider: newMethod.provider,
-        account_holder: newMethod.account_holder,
-        account_value: newMethod.account_value,
-        details: newMethod.details || null,
-        position: nextPos,
-        profile_method_id: profileMethodId,
-      })
-      .select()
-      .single();
-
-    if (error) {
-      alert("Error al guardar método de donación: " + error.message);
-      return;
-    }
-
-    setDonationMethods((prev) => [
-      ...prev,
-      {
-        id: created.id,
-        kind: created.kind,
-        provider: created.provider,
-        account_holder: created.account_holder,
-        account_value: created.account_value,
-        details: created.details || "",
-        position: nextPos,
-        profile_method_id: profileMethodId,
-      },
-    ]);
+    const ok = await addMethod(newMethod, saveInProfile);
+    if (!ok) return;
 
     setNewMethod({
       kind: "transferencia_bancaria",
@@ -739,48 +746,22 @@ function NuevaCausaContent({
 
   const handleRemoveDonationMethod = async (id?: string) => {
     if (!id) return;
-    await supabase.from("donation_methods").delete().eq("id", id);
-    setDonationMethods((prev) => prev.filter((m) => m.id !== id));
+    setActionError(null);
+    try {
+      const res = await quitarMetodoAction(id);
+      if (!res.success) {
+        setActionError(res.error);
+        return;
+      }
+      setDonationMethods((prev) => prev.filter((m) => m.id !== id));
+    } catch (err: any) {
+      console.error("Quitar método:", err?.code, err?.message);
+      setActionError(`No se pudo quitar el método: ${err?.message || "error de conexión"}`);
+    }
   };
 
   const handleCopyPreviousMethod = async (method: DonationMethodItem) => {
-    if (!causeId || !user) return;
-    if (donationMethods.length >= 5) {
-      alert("Puedes agregar un máximo de 5 métodos por causa.");
-      return;
-    }
-    const nextPos = donationMethods.length;
-    const { data: created, error } = await supabase
-      .from("donation_methods")
-      .insert({
-        cause_id: causeId,
-        owner_id: user.id,
-        kind: method.kind,
-        provider: method.provider,
-        account_holder: method.account_holder,
-        account_value: method.account_value,
-        details: method.details || null,
-        position: nextPos,
-        profile_method_id: method.profile_method_id || null,
-      })
-      .select()
-      .single();
-
-    if (!error && created) {
-      setDonationMethods((prev) => [
-        ...prev,
-        {
-          id: created.id,
-          kind: created.kind,
-          provider: created.provider,
-          account_holder: created.account_holder,
-          account_value: created.account_value,
-          details: created.details || "",
-          position: nextPos,
-          profile_method_id: method.profile_method_id || null,
-        },
-      ]);
-    }
+    await addMethod(method, false);
   };
 
   // Insumos helper actions
@@ -833,158 +814,192 @@ function NuevaCausaContent({
   const handleDeleteSupply = async (index: number) => {
     const item = suppliesList[index];
     if (item.id) {
-      await supabase.from("cause_supplies").delete().eq("id", item.id);
+      setActionError(null);
+      try {
+        const res = await eliminarInsumoAction(item.id);
+        if (!res.success) {
+          setActionError(res.error);
+          return;
+        }
+      } catch (err: any) {
+        console.error("Eliminar insumo:", err?.code, err?.message);
+        setActionError(`No se pudo eliminar el insumo: ${err?.message || "error de conexión"}`);
+        return;
+      }
     }
     setSuppliesList((prev) =>
       prev.filter((_, idx) => idx !== index).map((s, idx) => ({ ...s, position: idx }))
     );
   };
 
-  const handleSaveSuppliesToDb = async () => {
-    if (!causeId || !user) return;
-    for (const [idx, item] of suppliesList.entries()) {
-      if (!item.name.trim()) continue;
-      if (item.id) {
-        await supabase
-          .from("cause_supplies")
-          .update({
-            name: item.name.trim(),
-            unit: item.unit.trim() || null,
-            quantity_needed: typeof item.quantity_needed === "number" ? item.quantity_needed : null,
-            position: idx,
-          })
-          .eq("id", item.id);
-      } else {
-        const { data: created } = await supabase
-          .from("cause_supplies")
-          .insert({
-            cause_id: causeId,
-            owner_id: user.id,
-            name: item.name.trim(),
-            unit: item.unit.trim() || null,
-            quantity_needed: typeof item.quantity_needed === "number" ? item.quantity_needed : null,
-            position: idx,
-          })
-          .select()
-          .single();
-        if (created) {
-          item.id = created.id;
+  /** Guarda la lista de insumos (los renglones sin nombre se descartan). */
+  const guardarInsumos = async (): Promise<boolean> => {
+    if (!causeId) return false;
+    const conNombre = suppliesList.filter((item) => item.name.trim());
+    try {
+      const res = await guardarInsumosAction(
+        causeId,
+        conNombre.map((item) => ({
+          id: item.id,
+          name: item.name,
+          unit: item.unit,
+          quantity_needed: typeof item.quantity_needed === "number" ? item.quantity_needed : null,
+        }))
+      );
+      if (!res.success) {
+        setSaveState("error");
+        setSaveError(res.error);
+        return false;
+      }
+      setSuppliesList(conNombre.map((item, idx) => ({ ...item, id: res.ids[idx], position: idx })));
+      return true;
+    } catch (err: any) {
+      console.error("Guardar insumos:", err?.code, err?.message);
+      setSaveState("error");
+      setSaveError(`No se pudieron guardar los insumos: ${err?.message || "error de conexión"}`);
+      return false;
+    }
+  };
+
+  // Validación de cada paso: errores debajo del campo que falta
+  const includesMoney = collectionType === "dinero" || collectionType === "ambas";
+  const includesSupplies = collectionType === "insumos" || collectionType === "ambas";
+
+  const telefonoCompleto = () => {
+    const selected = PHONE_COUNTRIES.find((c) => c.code === contactCountryCode);
+    const full = contactPhone.startsWith("+")
+      ? contactPhone
+      : `${selected?.dial || "+57"}${contactPhone.replace(/^0+/, "")}`;
+    const parsed = parsePhoneNumberFromString(full, contactCountryCode as CountryCode);
+    return parsed && parsed.isValid() ? parsed.format("E.164") : null;
+  };
+
+  const validarPaso = (step: number): Record<string, string> => {
+    const errs: Record<string, string> = {};
+    if (step === 1) {
+      const fotos = mediaList.filter((m) => m.kind === "imagen" && m.id && !m.error && !m.isUploading).length;
+      if (mediaList.some((m) => m.isUploading)) errs.media = "Espera a que terminen de subir tus archivos.";
+      else if (fotos < 2) errs.media = "Agrega al menos 2 fotos.";
+    }
+    if (step === 2) {
+      const t = title.trim().length;
+      if (t < 10 || t > 90) errs.title = "El título debe tener entre 10 y 90 caracteres.";
+      if (description.trim().length < 80) errs.description = "La historia necesita al menos 80 caracteres.";
+      if (!category) errs.category = "Elige una categoría.";
+      if (includesMoney && hasGoal && !(typeof goalAmount === "number" && goalAmount > 0)) {
+        errs.goal = "Escribe un monto mayor que 0 o desactiva la meta.";
+      }
+    }
+    if (step === 3) {
+      if (!countryCode) errs.country = "Elige tu país.";
+      if (!city || lat === null || lng === null) errs.city = "Elige tu ciudad de la lista.";
+    }
+    if (step === 4) {
+      if (includesMoney && donationMethods.length < 1) {
+        errs.methods = "Agrega al menos un medio para recibir donaciones.";
+      }
+      if (includesSupplies) {
+        if (!suppliesList.some((s) => s.name.trim().length >= 2)) errs.supplies = "Agrega al menos un insumo.";
+        if (suppliesInstructions.trim().length < 20) {
+          errs.suppliesInstructions = "Explica cómo pueden entregarte los insumos (mínimo 20 caracteres).";
         }
       }
     }
+    if (step === 5 && !hasPhone && !telefonoCompleto()) {
+      errs.phone = "Agrega tu número de contacto.";
+    }
+    return errs;
+  };
+
+  /** Valida y guarda el paso actual. Solo avanza si todo quedó guardado. */
+  const irAPaso = async (target: number) => {
+    if (target === currentStep) return;
+    if (target < currentStep) {
+      // Volver atrás nunca se bloquea; el paso que se deja igual se guarda
+      guardarAhora();
+      setFieldErrors({});
+      setCurrentStep(target);
+      return;
+    }
+
+    setAdvancing(true);
+    try {
+      for (let step = currentStep; step < target; step++) {
+        const errs = validarPaso(step);
+        if (Object.keys(errs).length > 0) {
+          setFieldErrors(errs);
+          setCurrentStep(step);
+          return;
+        }
+        if (step === 4 && includesSupplies && !(await guardarInsumos())) {
+          setCurrentStep(step);
+          return;
+        }
+      }
+      // Cada paso guarda al salir de él; si falla, no se avanza
+      if (!(await guardarAhora())) return;
+      setFieldErrors({});
+      setCurrentStep(target);
+      window.scrollTo({ top: 0, behavior: "smooth" });
+    } finally {
+      setAdvancing(false);
+    }
+  };
+
+  const PUBLISH_ERRORS: Record<string, { message: string; step: number }> = {
+    REQ_IMAGENES: { message: "Agrega al menos 2 fotos.", step: 1 },
+    REQ_TITULO: { message: "El título debe tener entre 10 y 90 caracteres.", step: 2 },
+    REQ_DESCRIPCION: { message: "La historia necesita al menos 80 caracteres.", step: 2 },
+    REQ_UBICACION: { message: "Elige tu país y tu ciudad.", step: 3 },
+    REQ_METODOS: { message: "Agrega al menos un medio para recibir donaciones.", step: 4 },
+    REQ_INSUMOS: { message: "Agrega al menos un insumo.", step: 4 },
+    REQ_ENTREGA: { message: "Explica cómo pueden entregarte los insumos.", step: 4 },
+    REQ_TELEFONO: { message: "Agrega tu número de contacto.", step: 5 },
   };
 
   // Step 5: Publish Cause Action
   const handlePublish = async () => {
     if (!causeId || !user) return;
     setPublishError(null);
-    setPhoneError(null);
 
-    // If user lacks phone, validate and save it first (Sección 6)
-    if (!hasPhone) {
-      const selectedCountry = PHONE_COUNTRIES.find((c) => c.code === contactCountryCode);
-      const dial = selectedCountry?.dial || "+57";
-      const fullPhone = contactPhone.startsWith("+")
-        ? contactPhone
-        : `${dial}${contactPhone.replace(/^0+/, "")}`;
-
-      const parsed = parsePhoneNumberFromString(fullPhone, contactCountryCode as CountryCode);
-      if (!parsed || !parsed.isValid()) {
-        setPhoneError("Escribe un número de teléfono válido para publicar.");
-        setCurrentStep(5);
-        return;
-      }
-
-      const formatted = parsed.format("E.164");
-      const { error: phoneErr } = await supabase
-        .from("profile_private")
-        .update({ phone: formatted })
-        .eq("id", user.id);
-
-      if (phoneErr) {
-        setPhoneError("No se pudo guardar el teléfono: " + phoneErr.message);
-        setCurrentStep(5);
-        return;
-      }
+    const errs = validarPaso(5);
+    if (Object.keys(errs).length > 0) {
+      setFieldErrors(errs);
+      return;
     }
 
     setIsPublishing(true);
-
     try {
-      // Sync supplies before publishing if cause accepts supplies
-      if (collectionType === "insumos" || collectionType === "ambas") {
-        await handleSaveSuppliesToDb();
+      // Teléfono (si falta, se pide aquí mismo)
+      if (!hasPhone) {
+        const phoneRes = await guardarTelefonoAction(telefonoCompleto()!);
+        if (!phoneRes.success) {
+          setFieldErrors({ phone: phoneRes.error });
+          return;
+        }
+        setHasPhone(true);
       }
 
-      // Direct Postgres status update to trigger check_cause_activation
-      const { error } = await supabase
-        .from("causes")
-        .update({
-          status: "activa",
-          collection_type: collectionType,
-          supplies_instructions: suppliesInstructions.trim() || null,
-          published_at: new Date().toISOString(),
-        })
-        .eq("id", causeId);
+      // Todo lo del borrador queda guardado antes de publicar
+      if (includesSupplies && !(await guardarInsumos())) {
+        setPublishError({ message: "No se pudieron guardar los insumos. Revisa el aviso de arriba.", step: 4 });
+        return;
+      }
+      if (!(await guardarAhora())) {
+        setPublishError({ message: "No se pudo guardar el borrador antes de publicar. Revisa el aviso de arriba." });
+        return;
+      }
 
-      if (error) {
-        const msg = error.message || "";
-        if (msg.includes("REQ_TELEFONO")) {
-          setPublishError({
-            message: "Agrega tu número de contacto para publicar. No se muestra públicamente.",
-            step: 5,
-          });
-          setCurrentStep(5);
-        } else if (msg.includes("REQ_IMAGENES")) {
-          setPublishError({
-            message: "Agrega al menos 2 fotos para publicar.",
-            step: 1,
-          });
-          setCurrentStep(1);
-        } else if (msg.includes("REQ_TITULO")) {
-          setPublishError({
-            message: "El título debe tener entre 10 y 90 caracteres.",
-            step: 2,
-          });
-          setCurrentStep(2);
-        } else if (msg.includes("REQ_DESCRIPCION")) {
-          setPublishError({
-            message: "Cuenta un poco más: la descripción necesita al menos 80 caracteres.",
-            step: 2,
-          });
-          setCurrentStep(2);
-        } else if (msg.includes("REQ_UBICACION")) {
-          setPublishError({
-            message: "Elige tu país y tu ciudad.",
-            step: 3,
-          });
-          setCurrentStep(3);
-        } else if (msg.includes("REQ_METODOS")) {
-          setPublishError({
-            message: "Agrega al menos un medio para recibir donaciones.",
-            step: 4,
-          });
-          setCurrentStep(4);
-        } else if (msg.includes("REQ_INSUMOS")) {
-          setPublishError({
-            message: "Agrega al menos un insumo que necesites.",
-            step: 4,
-          });
-          setCurrentStep(4);
-        } else if (msg.includes("REQ_ENTREGA")) {
-          setPublishError({
-            message: "Explica cómo pueden hacerte llegar los insumos.",
-            step: 4,
-          });
-          setCurrentStep(4);
-        } else if (msg.includes("REQ_PERFIL")) {
-          setPublishError({
-            message: "Completa tu nombre en tu perfil antes de publicar.",
-          });
+      const res = await publicarCausaAction(causeId);
+      if (!res.success) {
+        const known = res.code ? PUBLISH_ERRORS[res.code] : undefined;
+        if (known) {
+          setPublishError(known);
+          setCurrentStep(known.step);
+        } else if (res.code === "REQ_PERFIL") {
+          setPublishError({ message: "Completa tu nombre en tu perfil antes de publicar." });
         } else {
-          setPublishError({
-            message: "Error al publicar: " + msg,
-          });
+          setPublishError({ message: `No se pudo publicar la causa: ${res.error}` });
         }
         return;
       }
@@ -992,7 +1007,8 @@ function NuevaCausaContent({
       // Success! Navigate to the published cause page
       router.push(`/causa/${causeId}?publicada=1`);
     } catch (err: any) {
-      setPublishError({ message: err.message || "Error inesperado" });
+      console.error("Publicar causa:", err?.code, err?.message);
+      setPublishError({ message: `No se pudo publicar la causa: ${err?.message || "error de conexión"}` });
     } finally {
       setIsPublishing(false);
     }
@@ -1026,22 +1042,8 @@ function NuevaCausaContent({
     );
   }
 
-  // Pre-calculate step readiness for visual feedback
-  const hasMinImages = mediaList.filter((m) => m.kind === "imagen").length >= 2;
-  const isTitleValid = title.length >= 10 && title.length <= 90;
-  const isDescValid = description.length >= 80 && description.length <= 5000;
-  const isLocationValid = Boolean(countryCode && city && lat && lng);
-  const hasDonationMethod = donationMethods.length >= 1;
-  const hasSupplies = suppliesList.length >= 1 && suppliesList.some((s) => s.name.trim().length >= 2);
-  const hasSuppliesInstructions =
-    suppliesInstructions.trim().length >= 20 && suppliesInstructions.trim().length <= 600;
-  const isNeedsValid =
-    collectionType === "dinero"
-      ? hasDonationMethod
-      : collectionType === "insumos"
-      ? hasSupplies && hasSuppliesInstructions
-      : hasDonationMethod && hasSupplies && hasSuppliesInstructions;
-  const hasValidProfile = Boolean(profile?.full_name && profile.full_name.trim().length >= 2);
+  const readyImages = mediaList.filter((m) => m.kind === "imagen" && m.id && !m.error && !m.isUploading).length;
+  const hasMinImages = readyImages >= 2;
 
   return (
     <div className="max-w-4xl mx-auto px-4 pt-28 md:pt-32 pb-24">
@@ -1065,7 +1067,7 @@ function NuevaCausaContent({
           ].map((s) => (
             <button
               key={s.num}
-              onClick={() => setCurrentStep(s.num)}
+              onClick={() => irAPaso(s.num)}
               className={`flex items-center gap-1.5 px-3.5 py-1.5 rounded-full text-xs font-semibold transition-all cursor-pointer ${
                 currentStep === s.num
                   ? "bg-[var(--cta)] text-white shadow-md shadow-blue-500/25 ring-2 ring-[var(--cta)]/30 font-bold"
@@ -1090,13 +1092,43 @@ function NuevaCausaContent({
           ))}
         </div>
 
-        {autoSaving && (
+        {saveState === "saving" && (
           <div className="mt-2 text-[11px] text-text-secondary flex items-center justify-center gap-1">
             <IconoCargando size={12} className="animate-spin text-accent" />
-            <span>Guardando borrador...</span>
+            <span>Guardando…</span>
+          </div>
+        )}
+        {saveState === "saved" && savedAt && (
+          <div className="mt-2 text-[11px] text-text-secondary flex items-center justify-center gap-1">
+            <IconoCheck size={12} className="text-emerald-400" />
+            <span>
+              Guardado {new Date(savedAt).toLocaleTimeString("es", { hour: "2-digit", minute: "2-digit" })}
+            </span>
+          </div>
+        )}
+        {saveState === "error" && (
+          <div className="mt-2 text-[11px] text-rose-400 flex items-center justify-center gap-1.5">
+            <IconoAlerta size={12} />
+            <span>No se pudo guardar{saveError ? `: ${saveError}` : ""}</span>
+            <button
+              type="button"
+              onClick={() => guardarAhora()}
+              className="underline font-semibold cursor-pointer"
+            >
+              Reintentar
+            </button>
           </div>
         )}
       </div>
+
+      {actionError && (
+        <div className="mb-6 p-4 rounded-2xl bg-red-500/10 border border-red-500/30 flex items-start gap-3 text-red-400">
+          <IconoAlerta size={20} className="flex-shrink-0 mt-0.5" />
+          <div className="flex-1 text-sm">
+            <p className="font-semibold">{actionError}</p>
+          </div>
+        </div>
+      )}
 
       {/* Global Publish Error Banner */}
       {publishError && (
@@ -1104,7 +1136,7 @@ function NuevaCausaContent({
           <IconoAlerta size={20} className="flex-shrink-0 mt-0.5" />
           <div className="flex-1 text-sm">
             <p className="font-semibold">{publishError.message}</p>
-            {publishError.step && (
+            {publishError.step && publishError.step !== currentStep && (
               <button
                 onClick={() => setCurrentStep(publishError.step!)}
                 className="underline text-xs mt-1 font-medium block"
@@ -1113,7 +1145,7 @@ function NuevaCausaContent({
               </button>
             )}
             {publishError.message.includes("perfil") && (
-              <Link href="/ajustes" className="underline text-xs mt-1 font-medium block">
+              <Link href="/perfil" className="underline text-xs mt-1 font-medium block">
                 Completar mi perfil ahora →
               </Link>
             )}
@@ -1186,7 +1218,7 @@ function NuevaCausaContent({
                         <video
                           src={
                             item.previewUrl ||
-                            `https://aeqqnzqcxurnpbkkahvl.supabase.co/storage/v1/object/public/causas-videos/${item.storage_path}`
+                            urlDeMedio("causas-videos", item.storage_path)
                           }
                           className="w-full h-full object-cover"
                         />
@@ -1194,7 +1226,7 @@ function NuevaCausaContent({
                         <img
                           src={
                             item.previewUrl ||
-                            `https://aeqqnzqcxurnpbkkahvl.supabase.co/storage/v1/object/public/causas-imagenes/${item.storage_path}`
+                            urlDeMedio("causas-imagenes", item.storage_path)
                           }
                           alt={`Medio ${idx + 1}`}
                           className="w-full h-full object-cover"
@@ -1286,10 +1318,13 @@ function NuevaCausaContent({
               {hasMinImages ? <IconoCheckCirculo size={16} /> : <IconoInfo size={16} />}
               <span>
                 {hasMinImages
-                  ? `¡Listo! Cumples con el requisito de fotos (${mediaList.filter((m) => m.kind === "imagen").length} añadidas).`
-                  : "Puedes avanzar con el botón 'Siguiente' para completar tu historia y ubicación. Se te pedirán mínimo 2 fotos antes de publicar en el Paso 5."}
+                  ? `¡Listo! Cumples con el requisito de fotos (${readyImages} añadidas).`
+                  : "Agrega al menos 2 fotos para continuar."}
               </span>
             </div>
+            {fieldErrors.media && (
+                <p className="text-xs text-rose-400 font-medium mt-1.5 -mt-3">{fieldErrors.media}</p>
+              )}
           </div>
         )}
 
@@ -1320,6 +1355,9 @@ function NuevaCausaContent({
                 placeholder="Ej: Ayuda para reconstruir la vivienda familiar tras inundación"
                 className="w-full px-4 py-3 rounded-2xl glass-surface border border-glass-tint focus:border-accent outline-none text-text-primary text-sm"
               />
+              {fieldErrors.title && (
+                <p className="text-xs text-rose-400 font-medium mt-1.5">{fieldErrors.title}</p>
+              )}
             </div>
 
             {/* Category selection */}
@@ -1343,6 +1381,9 @@ function NuevaCausaContent({
                   </button>
                 ))}
               </div>
+              {fieldErrors.category && (
+                <p className="text-xs text-rose-400 font-medium mt-1.5">{fieldErrors.category}</p>
+              )}
             </div>
 
             {/* Description */}
@@ -1367,6 +1408,9 @@ function NuevaCausaContent({
                 placeholder="Explica qué sucedió, a quiénes afecta, qué se necesita con urgencia y cómo se utilizarán los aportes. Cuanta más transparencia brindes, mayor respaldo recibirás."
                 className="w-full px-4 py-3 rounded-2xl glass-surface border border-glass-tint focus:border-accent outline-none text-text-primary text-sm whitespace-pre-wrap resize-y"
               />
+              {fieldErrors.description && (
+                <p className="text-xs text-rose-400 font-medium mt-1.5">{fieldErrors.description}</p>
+              )}
             </div>
 
             {/* Goal Amount (Optional, only if includes money) */}
@@ -1405,10 +1449,13 @@ function NuevaCausaContent({
                         min="1"
                         step="any"
                         value={goalAmount}
-                        onChange={(e) => setGoalAmount(e.target.value ? Number(e.target.value) : "")}
+                        onChange={(e) => setGoalAmount(e.target.value && Number(e.target.value) > 0 ? Number(e.target.value) : "")}
                         placeholder="Ej: 5000"
                         className="w-full px-4 py-2.5 rounded-xl glass-surface border border-glass-tint focus:border-accent outline-none text-text-primary text-sm"
                       />
+                      {fieldErrors.goal && (
+                <p className="text-xs text-rose-400 font-medium mt-1.5">{fieldErrors.goal}</p>
+              )}
                     </div>
 
                     <div>
@@ -1474,6 +1521,9 @@ function NuevaCausaContent({
                   </option>
                 ))}
               </select>
+              {fieldErrors.country && (
+                <p className="text-xs text-rose-400 font-medium mt-1.5">{fieldErrors.country}</p>
+              )}
             </div>
 
             {/* City Autocomplete */}
@@ -1505,6 +1555,9 @@ function NuevaCausaContent({
                   />
                 )}
               </div>
+              {fieldErrors.city && (
+                <p className="text-xs text-rose-400 font-medium mt-1.5">{fieldErrors.city}</p>
+              )}
 
               {/* Suggestions Dropdown */}
               {citySuggestions.length > 0 && !city && (
@@ -1766,6 +1819,9 @@ function NuevaCausaContent({
                     </p>
                   </div>
                 )}
+                {fieldErrors.methods && (
+                <p className="text-xs text-rose-400 font-medium mt-1.5 mt-0">{fieldErrors.methods}</p>
+              )}
               </div>
             )}
 
@@ -1885,6 +1941,9 @@ function NuevaCausaContent({
                     </button>
                   </div>
                 )}
+                {fieldErrors.supplies && (
+                <p className="text-xs text-rose-400 font-medium mt-1.5 mt-0">{fieldErrors.supplies}</p>
+              )}
 
                 {/* Instrucciones de entrega */}
                 <div className="space-y-1.5 pt-2">
@@ -1914,6 +1973,9 @@ function NuevaCausaContent({
                     placeholder="Ej: Recibimos en la parroquia del barrio, de 8 a 5. Escríbeme antes por WhatsApp al número que aparece cuando inicias sesión."
                     className="w-full px-4 py-3 rounded-2xl glass-surface border border-glass-tint focus:border-accent outline-none text-text-primary text-xs whitespace-pre-wrap resize-y"
                   />
+                  {fieldErrors.suppliesInstructions && (
+                <p className="text-xs text-rose-400 font-medium mt-1.5 mt-0">{fieldErrors.suppliesInstructions}</p>
+              )}
                 </div>
               </div>
             )}
@@ -2043,8 +2105,7 @@ function NuevaCausaContent({
             <div>
               <h2 className="text-xl font-bold text-text-primary">Paso 5 · Revisar y Publicar</h2>
               <p className="text-xs text-text-secondary mt-1">
-                Así se verá tu causa en el feed principal. Verifica que todos los requisitos estén
-                cumplidos antes de publicar.
+                Así se verá tu causa en el feed principal. Revisa la vista previa antes de publicar.
               </p>
             </div>
 
@@ -2079,15 +2140,15 @@ function NuevaCausaContent({
                     value={contactPhone}
                     onChange={(e) => {
                       setContactPhone(e.target.value);
-                      setPhoneError(null);
+                      setFieldErrors((prev) => ({ ...prev, phone: "" }));
                     }}
                     className="flex-1 px-3 py-2.5 rounded-xl glass-surface border border-glass-tint text-xs text-text-primary outline-none font-mono"
                   />
                 </div>
 
-                {phoneError && (
+                {fieldErrors.phone && (
                   <div className="text-xs text-rose-400 font-medium">
-                    {phoneError}
+                    {fieldErrors.phone}
                   </div>
                 )}
               </div>
@@ -2118,129 +2179,12 @@ function NuevaCausaContent({
                 author={{
                   id: user?.id || "preview-id",
                   full_name: profile?.full_name || "Mi Nombre",
-                  username: profile?.username || "mi_usuario",
+                  public_id: profile?.public_id || "",
                   avatar_url: profile?.avatar_url,
                 }}
                 media={mediaList}
                 isPreview={true}
               />
-            </div>
-
-            {/* Checklist Card */}
-            <div className="p-5 rounded-2xl glass-surface border border-glass-tint space-y-3">
-              <h4 className="font-semibold text-text-primary text-xs uppercase tracking-wider">
-                Requisitos de Activación
-              </h4>
-
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs">
-                <div
-                  className={`flex items-center gap-2 ${
-                    hasMinImages ? "text-emerald-400" : "text-amber-400"
-                  }`}
-                >
-                  {hasMinImages ? <IconoCheck size={16} /> : <IconoAlerta size={16} />}
-                  <span>Mínimo 2 fotos ({mediaList.filter((m) => m.kind === "imagen").length}/2)</span>
-                </div>
-
-                <div
-                  className={`flex items-center gap-2 ${
-                    isTitleValid ? "text-emerald-400" : "text-amber-400"
-                  }`}
-                >
-                  {isTitleValid ? <IconoCheck size={16} /> : <IconoAlerta size={16} />}
-                  <span>Título entre 10 y 90 caracteres ({title.length})</span>
-                </div>
-
-                <div
-                  className={`flex items-center gap-2 ${
-                    isDescValid ? "text-emerald-400" : "text-amber-400"
-                  }`}
-                >
-                  {isDescValid ? <IconoCheck size={16} /> : <IconoAlerta size={16} />}
-                  <span>Historia de mínimo 80 caracteres ({description.length})</span>
-                </div>
-
-                <div
-                  className={`flex items-center gap-2 ${
-                    isLocationValid ? "text-emerald-400" : "text-amber-400"
-                  }`}
-                >
-                  {isLocationValid ? <IconoCheck size={16} /> : <IconoAlerta size={16} />}
-                  <span>
-                    Ubicación definida ({city ? `${city}, ${countryCode}` : "Sin ciudad"})
-                  </span>
-                </div>
-
-                {(collectionType === "dinero" || collectionType === "ambas") && (
-                  <div
-                    className={`flex items-center gap-2 ${
-                      hasDonationMethod ? "text-emerald-400" : "text-amber-400"
-                    }`}
-                  >
-                    {hasDonationMethod ? <IconoCheck size={16} /> : <IconoAlerta size={16} />}
-                    <span>
-                      Al menos 1 método de donación ({donationMethods.length} configurados)
-                    </span>
-                  </div>
-                )}
-
-                {(collectionType === "insumos" || collectionType === "ambas") && (
-                  <>
-                    <div
-                      className={`flex items-center gap-2 ${
-                        hasSupplies ? "text-emerald-400" : "text-amber-400"
-                      }`}
-                    >
-                      {hasSupplies ? <IconoCheck size={16} /> : <IconoAlerta size={16} />}
-                      <span>
-                        Al menos 1 insumo en la lista ({suppliesList.length} agregados)
-                      </span>
-                    </div>
-
-                    <div
-                      className={`flex items-center gap-2 ${
-                        hasSuppliesInstructions ? "text-emerald-400" : "text-amber-400"
-                      }`}
-                    >
-                      {hasSuppliesInstructions ? <IconoCheck size={16} /> : <IconoAlerta size={16} />}
-                      <span>
-                        Instrucciones de entrega ({suppliesInstructions.trim().length}/20 caracteres mín.)
-                      </span>
-                    </div>
-                  </>
-                )}
-
-                <div
-                  className={`flex items-center gap-2 ${
-                    hasPhone || Boolean(contactPhone.trim()) ? "text-emerald-400" : "text-amber-400"
-                  }`}
-                >
-                  {hasPhone || Boolean(contactPhone.trim()) ? <IconoCheck size={16} /> : <IconoAlerta size={16} />}
-                  <span>
-                    Teléfono de contacto privado ({hasPhone || Boolean(contactPhone.trim()) ? "Configurado" : "Falta agregar"})
-                  </span>
-                </div>
-
-                <div
-                  className={`flex items-center gap-2 ${
-                    hasValidProfile ? "text-emerald-400" : "text-amber-400"
-                  }`}
-                >
-                  {hasValidProfile ? <IconoCheck size={16} /> : <IconoAlerta size={16} />}
-                  <span>
-                    Nombre en tu perfil ({profile?.full_name || "Pendiente"})
-                  </span>
-                </div>
-              </div>
-
-              {!hasValidProfile && (
-                <div className="pt-2 text-xs text-amber-400 flex items-center gap-1">
-                  <IconoAlerta size={14} /> Tu perfil necesita un nombre completo antes de publicar.{" "}
-                  <Link href="/perfil" className="underline font-semibold">
-                    Completar en Perfil →
-                  </Link>
-                </div>
-              )}
             </div>
 
             {/* Big Publish Button */}
@@ -2275,7 +2219,7 @@ function NuevaCausaContent({
         <div className="mt-8 pt-6 border-t border-[var(--line)] flex items-center justify-between">
           <button
             type="button"
-            onClick={() => setCurrentStep((prev) => Math.max(1, prev - 1))}
+            onClick={() => irAPaso(Math.max(1, currentStep - 1))}
             disabled={currentStep === 1}
             className="px-5 py-2.5 rounded-full border border-[var(--line)] bg-[var(--field)] text-[var(--ink-2)] hover:text-[var(--ink)] hover:bg-[var(--hover)] disabled:opacity-30 text-sm font-semibold flex items-center gap-2 transition-all cursor-pointer disabled:cursor-not-allowed"
           >
@@ -2285,11 +2229,12 @@ function NuevaCausaContent({
           {currentStep < 5 ? (
             <button
               type="button"
-              onClick={() => setCurrentStep((prev) => Math.min(5, prev + 1))}
-              className="px-6 py-2.5 rounded-full bg-[var(--cta)] text-white text-sm font-semibold flex items-center gap-2 hover:brightness-110 shadow-md shadow-blue-600/20 transition-all active:scale-95 cursor-pointer"
+              onClick={() => irAPaso(currentStep + 1)}
+              disabled={advancing}
+              className="px-6 py-2.5 rounded-full bg-[var(--cta)] text-white text-sm font-semibold flex items-center gap-2 hover:brightness-110 shadow-md shadow-blue-600/20 transition-all active:scale-95 cursor-pointer disabled:opacity-60"
             >
               <span>Siguiente</span>
-              <IconoFlechaDerecha size={16} />
+              {advancing ? <IconoCargando size={16} className="animate-spin" /> : <IconoFlechaDerecha size={16} />}
             </button>
           ) : null}
         </div>
