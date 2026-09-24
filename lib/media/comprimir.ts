@@ -317,3 +317,47 @@ export async function generarPortadaVideo(
     video.src = objectUrl;
   });
 }
+
+export interface ComprimidoComentario {
+  file: File;
+  width: number;
+  height: number;
+  bytes: number;
+  previewUrl: string;
+}
+
+/**
+ * Comprime una foto de comentario: lado mayor 1200 px, WebP 0.8.
+ * Redibujar en canvas elimina los metadatos EXIF (incluida la ubicación GPS).
+ */
+export async function comprimirFotoComentario(file: File): Promise<ComprimidoComentario> {
+  const img = await loadImageFromFile(file);
+  let w = img.naturalWidth || img.width;
+  let h = img.naturalHeight || img.height;
+  const max = 1200;
+  if (w > max || h > max) {
+    if (w >= h) {
+      h = Math.round((h * max) / w);
+      w = max;
+    } else {
+      w = Math.round((w * max) / h);
+      h = max;
+    }
+  }
+
+  const canvas = document.createElement("canvas");
+  canvas.width = w;
+  canvas.height = h;
+  const ctx = canvas.getContext("2d");
+  if (!ctx) throw new Error("No se pudo inicializar contexto 2D de canvas.");
+  ctx.drawImage(img, 0, 0, w, h);
+  const blob = await canvasToBlob(canvas, "image/webp", 0.8);
+
+  return {
+    file: new File([blob], "comentario.webp", { type: "image/webp" }),
+    width: w,
+    height: h,
+    bytes: blob.size,
+    previewUrl: URL.createObjectURL(blob),
+  };
+}

@@ -172,6 +172,8 @@ export function CauseDetailView({
   const [isFollowing, setIsFollowing] = useState(initialFollowing);
   const [copiedValue, setCopiedValue] = useState<string | null>(null);
   const [lightboxOpen, setLightboxOpen] = useState(false);
+  // Fotos de un comentario abiertas en el mismo visor de la galería
+  const [visorComentario, setVisorComentario] = useState<{ urls: string[]; index: number } | null>(null);
   const [showSupportModal, setShowSupportModal] = useState(false);
   const [showAvisoModal, setShowAvisoModal] = useState(false);
   const [currentRaised, setCurrentRaised] = useState(cause.raised_reported || 0);
@@ -922,68 +924,81 @@ export function CauseDetailView({
           causeAuthorId={cause.author_id}
           currentUser={currentUser}
           currentUserProfile={currentUserProfile}
+          onOpenImages={(urls, index) => setVisorComentario({ urls, index })}
           initialComments={initialComments}
           initialHasMore={initialCommentsHasMore}
           initialTotal={initialCommentsTotal}
         />
       </section>
 
-      {/* 10. Lightbox Modal */}
-      {lightboxOpen && causeMedia.length > 0 && (
-        <div className="fixed inset-0 z-50 bg-black/95 flex flex-col items-center justify-center p-4 backdrop-blur-md">
-          <button
-            onClick={() => setLightboxOpen(false)}
-            className="absolute top-6 right-6 p-3 rounded-full bg-white/10 text-white hover:bg-white/20 transition-colors z-50"
-            aria-label="Cerrar"
-          >
-            <IconoCerrar size={24} />
-          </button>
+      {/* 10. Lightbox Modal (galería de la causa o fotos de un comentario) */}
+      {(() => {
+        const items = visorComentario
+          ? visorComentario.urls.map((url) => ({ url, kind: "imagen" as const, example: false }))
+          : causeMedia.map((m) => ({ url: getMediaUrl(m), kind: m.kind, example: isExamplePath(m.storage_path) }));
+        const open = visorComentario !== null || (lightboxOpen && causeMedia.length > 0);
+        if (!open || items.length === 0) return null;
+        const idx = visorComentario ? visorComentario.index : activeMediaIdx;
+        const setIdx = (fn: (prev: number) => number) =>
+          visorComentario
+            ? setVisorComentario((v) => (v ? { ...v, index: fn(v.index) } : v))
+            : setActiveMediaIdx(fn);
+        const close = () => {
+          setVisorComentario(null);
+          setLightboxOpen(false);
+        };
+        const actual = items[idx];
+        return (
+          <div className="fixed inset-0 z-50 bg-black/95 flex flex-col items-center justify-center p-4 backdrop-blur-md">
+            <button
+              onClick={close}
+              className="absolute top-6 right-6 p-3 rounded-full bg-white/10 text-white hover:bg-white/20 transition-colors z-50"
+              aria-label="Cerrar"
+            >
+              <IconoCerrar size={24} />
+            </button>
 
-          <div className="relative max-w-5xl max-h-[85vh] w-full flex items-center justify-center">
-            {causeMedia[activeMediaIdx]?.kind === "video" ? (
-              <video
-                src={getMediaUrl(causeMedia[activeMediaIdx])}
-                controls
-                autoPlay
-                className="max-h-[85vh] max-w-full rounded-2xl"
-              />
-            ) : isExamplePath(causeMedia[activeMediaIdx]?.storage_path ?? "") ? (
-              <div className="w-full max-w-2xl aspect-[4/3]">
-                <MarcoImagen aspectRatio="4/3" index={activeMediaIdx + 1} total={causeMedia.length} />
-              </div>
-            ) : (
-              <img
-                src={getMediaUrl(causeMedia[activeMediaIdx])}
-                alt={cause.title}
-                className="max-h-[85vh] max-w-full object-contain rounded-2xl shadow-2xl"
-              />
-            )}
+            <div className="relative max-w-5xl max-h-[85vh] w-full flex items-center justify-center">
+              {actual?.kind === "video" ? (
+                <video src={actual.url} controls autoPlay className="max-h-[85vh] max-w-full rounded-2xl" />
+              ) : actual?.example ? (
+                <div className="w-full max-w-2xl aspect-[4/3]">
+                  <MarcoImagen aspectRatio="4/3" index={idx + 1} total={items.length} />
+                </div>
+              ) : (
+                <img
+                  src={actual?.url}
+                  alt={cause.title}
+                  className="max-h-[85vh] max-w-full object-contain rounded-2xl shadow-2xl"
+                />
+              )}
 
-            {causeMedia.length > 1 && (
-              <>
-                <button
-                  onClick={() => setActiveMediaIdx((prev) => (prev > 0 ? prev - 1 : causeMedia.length - 1))}
-                  className="absolute left-2 top-1/2 -translate-y-1/2 p-3 rounded-full bg-white/10 text-white hover:bg-white/20"
-                  aria-label="Imagen anterior"
-                >
-                  <IconoFlechaIzquierda size={28} />
-                </button>
-                <button
-                  onClick={() => setActiveMediaIdx((prev) => (prev < causeMedia.length - 1 ? prev + 1 : 0))}
-                  className="absolute right-2 top-1/2 -translate-y-1/2 p-3 rounded-full bg-white/10 text-white hover:bg-white/20"
-                  aria-label="Imagen siguiente"
-                >
-                  <IconoFlechaDerecha size={28} />
-                </button>
-              </>
-            )}
+              {items.length > 1 && (
+                <>
+                  <button
+                    onClick={() => setIdx((prev) => (prev > 0 ? prev - 1 : items.length - 1))}
+                    className="absolute left-2 top-1/2 -translate-y-1/2 p-3 rounded-full bg-white/10 text-white hover:bg-white/20"
+                    aria-label="Imagen anterior"
+                  >
+                    <IconoFlechaIzquierda size={28} />
+                  </button>
+                  <button
+                    onClick={() => setIdx((prev) => (prev < items.length - 1 ? prev + 1 : 0))}
+                    className="absolute right-2 top-1/2 -translate-y-1/2 p-3 rounded-full bg-white/10 text-white hover:bg-white/20"
+                    aria-label="Imagen siguiente"
+                  >
+                    <IconoFlechaDerecha size={28} />
+                  </button>
+                </>
+              )}
+            </div>
+
+            <div className="mt-4 text-xs font-semibold text-white/70">
+              {idx + 1} / {items.length}
+            </div>
           </div>
-
-          <div className="mt-4 text-xs font-semibold text-white/70">
-            {activeMediaIdx + 1} / {causeMedia.length}
-          </div>
-        </div>
-      )}
+        );
+      })()}
 
       {/* Modal Registrar Apoyo Recibido (PLAN.md 6.3) */}
       <ModalAvisoDonacion

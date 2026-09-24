@@ -1,24 +1,37 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { IconoComentar, IconoEnviar, IconoBasura, IconoEditar, IconoRespuesta, IconoCerrar, IconoCargando } from "@/components/iconos";
+import { IconoComentar, IconoEnviar, IconoBasura, IconoEditar, IconoRespuesta, IconoCerrar, IconoCargando, IconoFoto } from "@/components/iconos";
 import { formatDistanceToNow } from "@/lib/utils/date";
-import { urlDeAvatar } from "@/lib/media";
+import { urlDeAvatar, urlDeMedio } from "@/lib/media";
+import { comprimirFotoComentario } from "@/lib/media/comprimir";
 import {
   cargarComentariosAction,
   cargarRespuestasAction,
   createCommentAction,
   deleteCommentAction,
   editCommentAction,
+  subirFotoComentarioAction,
 } from "@/app/actions/comments";
+
+const UNA_HORA_MS = 60 * 60 * 1000;
+const MAX_FOTOS = 2;
 
 export interface CommentAuthor {
   id: string;
   full_name: string;
   public_id: string;
   avatar_url?: string | null;
+}
+
+export interface CommentMediaItem {
+  id: string;
+  storage_path: string;
+  width: number | null;
+  height: number | null;
+  position: number;
 }
 
 export interface CommentItem {
@@ -31,6 +44,7 @@ export interface CommentItem {
   author_id: string;
   author: CommentAuthor;
   replies_count: number;
+  media?: CommentMediaItem[];
 }
 
 interface CommentsSectionProps {
@@ -48,6 +62,8 @@ interface CommentsSectionProps {
     avatar_url?: string | null;
     onboarding_completed_at?: string | null;
   } | null;
+  /** Abre el visor de la galería de la causa con estas fotos. */
+  onOpenImages?: (urls: string[], index: number) => void;
 }
 
 function Avatar({ author, className }: { author: CommentAuthor; className: string }) {
@@ -72,6 +88,7 @@ export function CommentsSection({
   thread = "causa",
   currentUser,
   currentUserProfile,
+  onOpenImages,
 }: CommentsSectionProps) {
   const router = useRouter();
   const isOnboarded = Boolean(currentUser && currentUserProfile?.onboarding_completed_at);
@@ -93,6 +110,58 @@ export function CommentsSection({
   const [replyTo, setReplyTo] = useState<CommentItem | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
+
+  // Fotos del comentario que se está escribiendo (hasta 2)
+  const [photos, setPhotos] = useState<Array<{ file: File; previewUrl: string }>>([]);
+  const [photoNotice, setPhotoNotice] = useState<string | null>(null);
+  const photoInputRef = useRef<HTMLInputElement>(null);
+
+  // Reloj para la ventana de una hora (los botones desaparecen al vencer)
+  const [now, setNow] = useState(() => Date.now());
+  useEffect(() => {
+    const timer = setInterval(() => setNow(Date.now()), 30_000);
+    return () => clearInterval(timer);
+  }, []);
+  const dentroDeLaHora = (c: CommentItem) => now - new Date(c.created_at).getTime() < UNA_HORA_MS;
+
+  const handlePickPhotos = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = Array.from(e.target.files || []).filter((f) => f.type.startsWith("image/"));
+    if (photoInputRef.current) photoInputRef.current.value = "";
+    setPhotoNotice(null);
+    setPhotos((prev) => {
+      const libres = MAX_FOTOS - prev.length;
+      if (files.length > libres) setPhotoNotice(`Puedes adjuntar hasta ${MAX_FOTOS} fotos por comentario.`);
+      return [...prev, ...files.slice(0, Math.max(0, libres)).map((file) => ({ file, previewUrl: URL.createObjectURL(file) }))];
+    });
+  };
+
+  const openMedia = (media: CommentMediaItem[] | undefined, index: number) => {
+    if (!media || media.length === 0 || !onOpenImages) return;
+    onOpenImages(
+      [...media].sort((a, b) => a.position - b.position).map((m) => urlDeMedio("causas-imagenes", m.storage_path)),
+      index
+    );
+  };
+
+  const renderMedia = (item: CommentItem, indent: string) => {
+    const media = [...(item.media || [])].sort((a, b) => a.position - b.position);
+    if (media.length === 0) return null;
+    return (
+      <div className={`${indent} flex gap-2 pt-1`}>
+        {media.map((m, idx) => (
+          <button
+            key={m.id}
+            type="button"
+            onClick={() => openMedia(media, idx)}
+            className="w-24 h-24 rounded-xl overflow-hidden border border-glass-tint cursor-pointer"
+            aria-label={`Ver foto ${idx + 1}`}
+          >
+            <img src={urlDeMedio("causas-imagenes", m.storage_path)} alt="" className="w-full h-full object-cover" />
+          </button>
+        ))}
+      </div>
+    );
+  };
 
   // Edit comment state
   const [editingCommentId, setEditingCommentId] = useState<string | null>(null);
@@ -214,6 +283,7 @@ export function CommentsSection({
 
     const previousBody = newCommentBody;
     const previousReplyTo = replyTo;
+    const previousPhotos = photos;
 
     if (rootId) {
       setRepliesMap((prev) => ({ ...prev, [rootId]: [...(prev[rootId] || []), optimistic] }));
@@ -227,6 +297,8 @@ export function CommentsSection({
     setTotal((t) => t + 1);
     setNewCommentBody("");
     setReplyTo(null);
+    setPhotos([]);
+    setPhotoNotice(null);
     setSubmitError(null);
     setIsSubmitting(true);
 
@@ -247,6 +319,7 @@ export function CommentsSection({
       setTotal((t) => Math.max(0, t - 1));
       setNewCommentBody(previousBody);
       setReplyTo(previousReplyTo);
+      setPhotos(previousPhotos);
       setSubmitError(message);
     };
 
@@ -265,13 +338,45 @@ export function CommentsSection({
       }
 
       const item = res.comment as unknown as CommentItem;
-      if (rootId) {
-        setRepliesMap((prev) => ({
-          ...prev,
-          [rootId]: (prev[rootId] || []).map((c) => (c.id === tempId ? item : c)),
-        }));
-      } else {
-        setComments((prev) => prev.map((c) => (c.id === tempId ? item : c)));
+      const replaceItem = (id: string, next: CommentItem) => {
+        if (rootId) {
+          setRepliesMap((prev) => ({
+            ...prev,
+            [rootId]: (prev[rootId] || []).map((c) => (c.id === id ? next : c)),
+          }));
+        } else {
+          setComments((prev) => prev.map((c) => (c.id === id ? next : c)));
+        }
+      };
+      replaceItem(tempId, item);
+
+      // Fotos: el comentario ya está publicado; si alguna falla, se avisa y el comentario queda
+      if (previousPhotos.length > 0) {
+        const subidas: CommentMediaItem[] = [];
+        const fallos: string[] = [];
+        for (const [position, photo] of previousPhotos.entries()) {
+          try {
+            const comprimida = await comprimirFotoComentario(photo.file);
+            const formData = new FormData();
+            formData.append("commentId", item.id);
+            formData.append("file", comprimida.file);
+            formData.append("position", String(position));
+            formData.append("width", String(comprimida.width));
+            formData.append("height", String(comprimida.height));
+            const up = await subirFotoComentarioAction(formData);
+            if (up.success) subidas.push(up.media as CommentMediaItem);
+            else fallos.push(up.error);
+          } catch (err: any) {
+            console.error("Foto de comentario:", err?.name, err?.message);
+            fallos.push(err?.message || "error al procesar la foto");
+          }
+        }
+        if (subidas.length > 0) replaceItem(item.id, { ...item, media: subidas });
+        if (fallos.length > 0) {
+          setPhotoNotice(
+            `El comentario se publicó, pero ${fallos.length === 1 ? "una foto no se pudo subir" : "las fotos no se pudieron subir"}: ${fallos[0]}`
+          );
+        }
       }
     } catch (err: any) {
       console.error("Publicar comentario:", err?.code, err?.message);
@@ -432,6 +537,24 @@ export function CommentsSection({
               }
               className="flex-1 bg-transparent border-none outline-none text-text-primary text-sm placeholder:text-text-secondary resize-none"
             />
+            <input
+              ref={photoInputRef}
+              type="file"
+              accept="image/png,image/jpeg,image/webp"
+              multiple
+              onChange={handlePickPhotos}
+              className="hidden"
+            />
+            <button
+              type="button"
+              onClick={() => photoInputRef.current?.click()}
+              disabled={isSubmitting || photos.length >= MAX_FOTOS}
+              className="self-end p-2.5 rounded-full text-text-secondary hover:text-accent hover:bg-glass-tint disabled:opacity-30 transition-colors cursor-pointer"
+              aria-label="Adjuntar fotos"
+              title={`Adjuntar hasta ${MAX_FOTOS} fotos`}
+            >
+              <IconoFoto size={16} />
+            </button>
             <button
               type="submit"
               disabled={isSubmitting || !newCommentBody.trim()}
@@ -442,14 +565,35 @@ export function CommentsSection({
             </button>
           </div>
 
+          {photos.length > 0 && (
+            <div className="flex gap-2">
+              {photos.map((photo, idx) => (
+                <div key={photo.previewUrl} className="relative w-16 h-16 rounded-xl overflow-hidden border border-glass-tint">
+                  <img src={photo.previewUrl} alt="" className="w-full h-full object-cover" />
+                  <button
+                    type="button"
+                    onClick={() => setPhotos((prev) => prev.filter((_, i) => i !== idx))}
+                    className="absolute top-0.5 right-0.5 p-0.5 rounded-full bg-black/60 text-white cursor-pointer"
+                    aria-label="Quitar foto"
+                  >
+                    <IconoCerrar size={12} />
+                  </button>
+                </div>
+              ))}
+            </div>
+          )}
+
           {submitError && <p className="text-xs text-red-400">{submitError}</p>}
 
           <div className="flex justify-between items-center text-[11px] text-text-secondary">
             <span>Sé respetuoso y solidario</span>
             <span>{newCommentBody.length} / 1000</span>
           </div>
+          <p className="text-[11px] text-text-secondary">Puedes editar o borrar tu comentario durante una hora.</p>
         </form>
       )}
+
+      {photoNotice && <p className="text-xs text-amber-400">{photoNotice}</p>}
 
       {/* Comments stream */}
       <div className="space-y-4">
@@ -457,8 +601,8 @@ export function CommentsSection({
           const isAuthor = currentUser?.id === comment.author_id;
           const isCauseOwner = currentUser?.id === causeAuthorId;
           const isTemp = comment.id.startsWith("temp-");
-          const canDelete = (isAuthor || isCauseOwner) && !isTemp;
-          const canEdit = isAuthor && !isTemp;
+          const canDelete = ((isAuthor && dentroDeLaHora(comment)) || isCauseOwner) && !isTemp;
+          const canEdit = isAuthor && dentroDeLaHora(comment) && !isTemp;
           const replies = repliesMap[comment.id] || [];
           const isExpanded = expandedReplies.has(comment.id);
           const isLoadingThisReplies = loadingReplies.has(comment.id);
@@ -536,6 +680,7 @@ export function CommentsSection({
               ) : (
                 <p className="text-sm text-text-primary whitespace-pre-wrap pl-9">{comment.body}</p>
               )}
+              {renderMedia(comment, "pl-9")}
 
               {/* Footer: Reply button and Toggle Replies */}
               <div className="pl-9 flex items-center gap-4 text-xs">
@@ -573,7 +718,8 @@ export function CommentsSection({
                   {replies.map((reply) => {
                     const isReplyAuthor = currentUser?.id === reply.author_id;
                     const isReplyTemp = reply.id.startsWith("temp-");
-                    const canDeleteReply = (isReplyAuthor || isCauseOwner) && !isReplyTemp;
+                    const canDeleteReply = ((isReplyAuthor && dentroDeLaHora(reply)) || isCauseOwner) && !isReplyTemp;
+                    const canEditReply = isReplyAuthor && dentroDeLaHora(reply) && !isReplyTemp;
 
                     return (
                       <div key={reply.id} className="space-y-1 text-xs">
@@ -592,7 +738,7 @@ export function CommentsSection({
                           </div>
 
                           <div className="flex items-center gap-1 text-text-secondary">
-                            {isReplyAuthor && !isReplyTemp && (
+                            {canEditReply && (
                               <button
                                 onClick={() => {
                                   setEditingCommentId(reply.id);
@@ -642,6 +788,7 @@ export function CommentsSection({
                         ) : (
                           <p className="text-text-primary whitespace-pre-wrap pl-7">{reply.body}</p>
                         )}
+                        {renderMedia(reply, "pl-7")}
 
                         <div className="pl-7 flex items-center gap-4 text-xs">
                           {renderReplyButton(reply)}

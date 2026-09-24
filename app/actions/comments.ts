@@ -19,8 +19,39 @@ const COMMENT_SELECT = `
     full_name,
     public_id,
     avatar_url
+  ),
+  media:comment_media(
+    id,
+    storage_path,
+    width,
+    height,
+    position
   )
 `;
+
+const VENTANA_CERRADA = "Ya pasó la hora para editar o borrar este comentario.";
+const UNA_HORA_MS = 60 * 60 * 1000;
+
+/** Si el comentario es de quien llama y ya pasó la hora, devuelve el mensaje de plazo vencido. */
+async function mensajeSiPlazoVencido(
+  supabase: Awaited<ReturnType<typeof createClient>>,
+  commentId: string,
+  userId: string
+): Promise<string | null> {
+  const { data, error } = await supabase
+    .from("comments")
+    .select("author_id, created_at")
+    .eq("id", commentId)
+    .maybeSingle();
+  if (error) {
+    console.error("mensajeSiPlazoVencido:", error.code, error.message);
+    return null;
+  }
+  if (data && data.author_id === userId && Date.now() - new Date(data.created_at).getTime() >= UNA_HORA_MS) {
+    return VENTANA_CERRADA;
+  }
+  return null;
+}
 
 type Thread = "causa" | "resultado";
 
@@ -182,6 +213,11 @@ export async function editCommentAction(commentId: string, causeId: string, body
   }
 
   const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) return { success: false, error: "Debes iniciar sesión para editar." };
+
   const { data, error } = await supabase
     .from("comments")
     .update({ body: trimmed })
@@ -191,10 +227,12 @@ export async function editCommentAction(commentId: string, causeId: string, body
 
   if (error) {
     console.error("editCommentAction:", error.code, error.message);
+    if (error.message.includes("VENTANA_CERRADA")) return { success: false, error: VENTANA_CERRADA };
     return { success: false, error: `No pudimos guardar el cambio: ${error.message}` };
   }
   if (!data) {
-    return { success: false, error: "No puedes editar este comentario." };
+    const plazo = await mensajeSiPlazoVencido(supabase, commentId, user.id);
+    return { success: false, error: plazo || "No puedes editar este comentario." };
   }
 
   revalidatePath(`/causa/${causeId}`);
@@ -203,6 +241,20 @@ export async function editCommentAction(commentId: string, causeId: string, body
 
 export async function deleteCommentAction(commentId: string, causeId: string) {
   const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) return { success: false, error: "Debes iniciar sesión para eliminar." };
+
+  // Fotos del comentario, para borrar también los archivos propios
+  const { data: fotos, error: fotosErr } = await supabase
+    .from("comment_media")
+    .select("storage_path, owner_id")
+    .eq("comment_id", commentId);
+  if (fotosErr) {
+    console.error("deleteCommentAction fotos:", fotosErr.code, fotosErr.message);
+  }
+
   const { data, error } = await supabase
     .from("comments")
     .delete()
@@ -211,12 +263,76 @@ export async function deleteCommentAction(commentId: string, causeId: string) {
 
   if (error) {
     console.error("deleteCommentAction:", error.code, error.message);
+    if (error.message.includes("VENTANA_CERRADA")) return { success: false, error: VENTANA_CERRADA };
     return { success: false, error: `No pudimos eliminar el comentario: ${error.message}` };
   }
   if (!data || data.length === 0) {
-    return { success: false, error: "No puedes eliminar este comentario." };
+    const plazo = await mensajeSiPlazoVencido(supabase, commentId, user.id);
+    return { success: false, error: plazo || "No puedes eliminar este comentario." };
+  }
+
+  const propias = (fotos || []).filter((f) => f.owner_id === user.id).map((f) => f.storage_path);
+  if (propias.length > 0) {
+    const { error: stErr } = await supabase.storage.from("causas-imagenes").remove(propias);
+    if (stErr) console.error("deleteCommentAction storage:", stErr.name, stErr.message);
   }
 
   revalidatePath(`/causa/${causeId}`);
   return { success: true };
+}
+
+/**
+ * Sube una foto de un comentario propio (dentro de su hora): la guarda en
+ * causas-imagenes/{uid}/comentarios/{comment_id}/{uuid}.webp y la registra en comment_media.
+ */
+export async function subirFotoComentarioAction(formData: FormData) {
+  const supabase = await createClient();
+  const {
+    data: { user },
+    error: authErr,
+  } = await supabase.auth.getUser();
+  if (authErr || !user) return { success: false as const, error: "Debes iniciar sesión para subir fotos." };
+
+  const commentId = String(formData.get("commentId") || "");
+  const file = formData.get("file");
+  const position = Number(formData.get("position") || 0);
+  const width = formData.get("width") ? Number(formData.get("width")) : null;
+  const height = formData.get("height") ? Number(formData.get("height")) : null;
+
+  if (!commentId || !(file instanceof File) || file.size === 0) {
+    return { success: false as const, error: "No recibimos la foto." };
+  }
+  if (file.type !== "image/webp") {
+    return { success: false as const, error: "La foto debe procesarse como WebP antes de subirla." };
+  }
+  if (file.size > 3 * 1024 * 1024) {
+    return { success: false as const, error: "La foto procesada supera los 3 MB." };
+  }
+
+  const path = `${user.id}/comentarios/${commentId}/${crypto.randomUUID()}.webp`;
+  const { error: upErr } = await supabase.storage
+    .from("causas-imagenes")
+    .upload(path, Buffer.from(await file.arrayBuffer()), { contentType: "image/webp", upsert: false });
+  if (upErr) {
+    console.error("subirFotoComentarioAction storage:", upErr.name, upErr.message);
+    return { success: false as const, error: `No se pudo subir la foto: ${upErr.message}` };
+  }
+
+  const { data: media, error: dbErr } = await supabase
+    .from("comment_media")
+    .insert({ comment_id: commentId, owner_id: user.id, storage_path: path, width, height, bytes: file.size, position })
+    .select("id, storage_path, width, height, position")
+    .single();
+
+  if (dbErr) {
+    console.error("subirFotoComentarioAction db:", dbErr.code, dbErr.message);
+    const { error: cleanErr } = await supabase.storage.from("causas-imagenes").remove([path]);
+    if (cleanErr) console.error("subirFotoComentarioAction limpiar:", cleanErr.name, cleanErr.message);
+    const msg = dbErr.message.includes("MAX_FOTOS_COMENTARIO")
+      ? "Cada comentario admite hasta 2 fotos."
+      : `No se pudo guardar la foto: ${dbErr.message}`;
+    return { success: false as const, error: msg };
+  }
+
+  return { success: true as const, media };
 }
