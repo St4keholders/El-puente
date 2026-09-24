@@ -39,8 +39,18 @@ export default async function PerfilLayout({
 
   const hasPhone = Boolean(priv?.phone);
 
+  // Avisos de donación pendientes en mis causas (punto azul en "Apoyos")
+  const { count: pendingSupports, error: pendingErr } = await supabase
+    .from("support_reports")
+    .select("id, cause:causes!inner(author_id)", { count: "exact", head: true })
+    .eq("status", "reportado")
+    .eq("cause.author_id", user.id);
+  if (pendingErr) {
+    console.error("/perfil avisos pendientes:", pendingErr.code, pendingErr.message);
+  }
+
   return (
-    <PerfilLayoutClient user={user} profile={profile} hasPhone={hasPhone}>
+    <PerfilLayoutClient user={user} profile={profile} hasPhone={hasPhone} pendingSupports={pendingSupports ?? 0}>
       {children}
     </PerfilLayoutClient>
   );

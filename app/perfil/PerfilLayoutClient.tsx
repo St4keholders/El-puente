@@ -12,6 +12,7 @@ import {
   IconoAjustes,
   IconoFlechaDerecha,
   IconoSalir,
+  IconoCorazon,
 } from "@/components/iconos";
 import type { Database } from "@/lib/database.types";
 import type { User } from "@supabase/supabase-js";
@@ -23,6 +24,7 @@ const NAV_ITEMS = [
   { href: "/perfil/metodos", label: "Métodos de pago", Icon: IconoBilletera },
   { href: "/perfil/causas", label: "Mis causas", Icon: IconoArchivo },
   { href: "/perfil/guardadas", label: "Guardadas", Icon: IconoGuardar },
+  { href: "/perfil/apoyos", label: "Apoyos", Icon: IconoCorazon },
   { href: "/perfil/cuenta", label: "Cuenta y privacidad", Icon: IconoAjustes },
 ];
 
@@ -30,6 +32,7 @@ interface PerfilLayoutClientProps {
   user: User;
   profile: Profile | null;
   hasPhone: boolean;
+  pendingSupports: number;
   children: React.ReactNode;
 }
 
@@ -37,6 +40,7 @@ export function PerfilLayoutClient({
   user,
   profile,
   hasPhone,
+  pendingSupports,
   children,
 }: PerfilLayoutClientProps) {
   const pathname = usePathname();
@@ -96,9 +100,10 @@ export function PerfilLayoutClient({
                 >
                   <Icon size={16} className={active ? "text-[var(--accent)]" : "text-[var(--ink-3)]"} />
                   <span>{item.label}</span>
-                  {item.href === "/perfil" && !hasPhone && (
+                  {((item.href === "/perfil" && !hasPhone) ||
+                    (item.href === "/perfil/apoyos" && pendingSupports > 0)) && (
                     <span
-                      aria-label="Tienes datos pendientes"
+                      aria-label={item.href === "/perfil" ? "Tienes datos pendientes" : "Tienes avisos por confirmar"}
                       className="w-2 h-2 rounded-full bg-[var(--accent)]"
                     />
                   )}
@@ -184,9 +189,10 @@ export function PerfilLayoutClient({
                         <div className="absolute left-0 top-2 bottom-2 w-1 rounded-r bg-[var(--accent)]" />
                       )}
 
-                      {item.href === "/perfil" && !hasPhone && (
+                      {((item.href === "/perfil" && !hasPhone) ||
+                        (item.href === "/perfil/apoyos" && pendingSupports > 0)) && (
                         <span
-                          aria-label="Tienes datos pendientes"
+                          aria-label={item.href === "/perfil" ? "Tienes datos pendientes" : "Tienes avisos por confirmar"}
                           className="w-2 h-2 rounded-full bg-[var(--accent)] animate-pulse"
                         />
                       )}

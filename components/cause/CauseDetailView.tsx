@@ -33,6 +33,9 @@ import { CommentsSection, type CommentItem } from "@/components/cause/CommentsSe
 import { urlDeAvatar } from "@/lib/media";
 import { createClient } from "@/lib/supabase/client";
 import { ModalRegistrarApoyo } from "@/components/cause/ModalRegistrarApoyo";
+import { ModalAvisoDonacion } from "@/components/cause/ModalAvisoDonacion";
+import { SeccionApoyos, type ApoyoConfirmado } from "@/components/apoyos/SeccionApoyos";
+import type { AvisoRecibido } from "@/components/apoyos/AvisoPendiente";
 
 interface MediaItem {
   id: string;
@@ -120,6 +123,8 @@ interface CauseDetailViewProps {
   initialComments: CommentItem[];
   initialCommentsHasMore: boolean;
   initialCommentsTotal: number;
+  apoyosConfirmados: ApoyoConfirmado[];
+  avisosPendientes: AvisoRecibido[];
 }
 
 const CATEGORY_LABELS: Record<string, string> = {
@@ -156,6 +161,8 @@ export function CauseDetailView({
   initialComments,
   initialCommentsHasMore,
   initialCommentsTotal,
+  apoyosConfirmados,
+  avisosPendientes,
 }: CauseDetailViewProps) {
   const router = useRouter();
   const supabase = createClient();
@@ -166,6 +173,7 @@ export function CauseDetailView({
   const [copiedValue, setCopiedValue] = useState<string | null>(null);
   const [lightboxOpen, setLightboxOpen] = useState(false);
   const [showSupportModal, setShowSupportModal] = useState(false);
+  const [showAvisoModal, setShowAvisoModal] = useState(false);
   const [currentRaised, setCurrentRaised] = useState(cause.raised_reported || 0);
   const [suppliesList, setSuppliesList] = useState(supplies);
 
@@ -800,6 +808,29 @@ export function CauseDetailView({
                 No se han configurado métodos de donación aún.
               </p>
             )}
+
+            {true && cause.status === "activa" && !isOwner && !cause.is_example && (
+              <div className="flex justify-center">
+                {currentUserId ? (
+                  <button
+                    type="button"
+                    onClick={() => setShowAvisoModal(true)}
+                    className="inline-flex items-center gap-1.5 px-5 py-2.5 rounded-full bg-accent text-white font-semibold text-xs hover:bg-accent/90 shadow-md shadow-accent/20 cursor-pointer"
+                  >
+                    <IconoCheck size={14} />
+                    <span>Ya hice mi donación</span>
+                  </button>
+                ) : (
+                  <Link
+                    href={`/entrar?next=/causa/${cause.id}#donar`}
+                    className="inline-flex items-center gap-1.5 px-5 py-2.5 rounded-full bg-accent text-white font-semibold text-xs hover:bg-accent/90 shadow-md shadow-accent/20"
+                  >
+                    <IconoCheck size={14} />
+                    <span>Ya hice mi donación</span>
+                  </Link>
+                )}
+              </div>
+            )}
           </div>
         )}
 
@@ -846,9 +877,40 @@ export function CauseDetailView({
                 No se han configurado instrucciones de entrega.
               </p>
             )}
+
+            {!includesDinero && cause.status === "activa" && !isOwner && !cause.is_example && (
+              <div className="flex justify-center">
+                {currentUserId ? (
+                  <button
+                    type="button"
+                    onClick={() => setShowAvisoModal(true)}
+                    className="inline-flex items-center gap-1.5 px-5 py-2.5 rounded-full bg-accent text-white font-semibold text-xs hover:bg-accent/90 shadow-md shadow-accent/20 cursor-pointer"
+                  >
+                    <IconoCheck size={14} />
+                    <span>Ya hice mi donación</span>
+                  </button>
+                ) : (
+                  <Link
+                    href={`/entrar?next=/causa/${cause.id}#donar`}
+                    className="inline-flex items-center gap-1.5 px-5 py-2.5 rounded-full bg-accent text-white font-semibold text-xs hover:bg-accent/90 shadow-md shadow-accent/20"
+                  >
+                    <IconoCheck size={14} />
+                    <span>Ya hice mi donación</span>
+                  </Link>
+                )}
+              </div>
+            )}
           </div>
         )}
       </section>
+
+      {/* 8c. Apoyos confirmados (y avisos por confirmar, solo para la autora) */}
+      <SeccionApoyos
+        confirmados={apoyosConfirmados}
+        pendientes={avisosPendientes}
+        insumos={suppliesList.map((s) => ({ id: s.id, name: s.name, unit: s.unit }))}
+        authorName={cause.author.full_name}
+      />
 
       {/* 9. Comments Section */}
       <section
@@ -924,6 +986,15 @@ export function CauseDetailView({
       )}
 
       {/* Modal Registrar Apoyo Recibido (PLAN.md 6.3) */}
+      <ModalAvisoDonacion
+        isOpen={showAvisoModal}
+        onClose={() => setShowAvisoModal(false)}
+        causeId={cause.id}
+        collectionType={collectionType}
+        currency={cause.currency || "USD"}
+        supplies={suppliesList.map((s) => ({ id: s.id, name: s.name, unit: s.unit }))}
+      />
+
       <ModalRegistrarApoyo
         isOpen={showSupportModal}
         onClose={() => setShowSupportModal(false)}

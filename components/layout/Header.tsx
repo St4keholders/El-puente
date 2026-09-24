@@ -17,7 +17,8 @@ import {
 
 export function Header() {
   const pathname = usePathname();
-  const { user, profile, hasPhone } = useUser();
+  const { user, profile, hasPhone, hasPendingSupports } = useUser();
+  const tienePendientes = !hasPhone || hasPendingSupports;
   const [showMoreMenu, setShowMoreMenu] = useState(false);
 
   const navLinks = [
@@ -149,7 +150,13 @@ export function Header() {
               <Link
                 href="/perfil"
                 className="relative inline-flex items-center gap-2 rounded-xl border border-[var(--line)] bg-[var(--field)] pl-2 pr-3 py-1.5 text-sm font-semibold text-[var(--ink)] transition-colors hover:bg-[var(--hover)] hover:border-[var(--glass-edge)]"
-                aria-label={!hasPhone ? "Mi perfil, tienes datos pendientes" : "Mi perfil"}
+                aria-label={
+                  hasPendingSupports
+                    ? "Mi perfil, tienes avisos de donación por confirmar"
+                    : !hasPhone
+                    ? "Mi perfil, tienes datos pendientes"
+                    : "Mi perfil"
+                }
               >
                 <div className="relative flex h-6 w-6 items-center justify-center rounded-full overflow-hidden bg-[var(--avatar)] border border-[var(--line)] text-xs font-semibold text-[var(--ink)] flex-shrink-0">
                   {urlDeAvatar(profile?.avatar_url) ? (
@@ -164,7 +171,7 @@ export function Header() {
                   )}
                 </div>
                 <span className="max-w-[100px] truncate">{profile?.full_name?.split(" ")[0] || "Perfil"}</span>
-                {!hasPhone && (
+                {tienePendientes && (
                   <span
                     aria-hidden="true"
                     className="absolute -top-1 -right-1 h-2.5 w-2.5 rounded-full bg-[var(--accent)] ring-2 ring-[var(--surface-solid)] animate-pulse"

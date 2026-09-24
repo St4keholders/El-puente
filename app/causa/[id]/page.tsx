@@ -220,6 +220,28 @@ export default async function CauseDetailPage(props: CausePageProps) {
     throw new Error(countRes.error);
   }
 
+  // Apoyos: los confirmados son públicos (sin nombre si son anónimos); los pendientes solo los ve la autora
+  const isOwner = Boolean(user && user.id === cause.author_id);
+  const [confirmadosRes, pendientesRes] = await Promise.all([
+    supabase.rpc("apoyos_confirmados", { p_cause_id: cause.id }),
+    isOwner
+      ? supabase
+          .from("support_reports")
+          .select("id, cause_id, kind, amount, currency, items, message, is_anonymous, created_at, donor:profiles!support_reports_donor_id_fkey(full_name, public_id)")
+          .eq("cause_id", cause.id)
+          .eq("status", "reportado")
+          .order("created_at", { ascending: true })
+      : Promise.resolve({ data: [], error: null }),
+  ]);
+  if (confirmadosRes.error) {
+    console.error("/causa apoyos_confirmados:", confirmadosRes.error.code, confirmadosRes.error.message);
+    throw new Error(`No pudimos cargar los apoyos confirmados: ${confirmadosRes.error.message}`);
+  }
+  if (pendientesRes.error) {
+    console.error("/causa avisos pendientes:", pendientesRes.error.code, pendientesRes.error.message);
+    throw new Error(`No pudimos cargar los avisos pendientes: ${pendientesRes.error.message}`);
+  }
+
   const countries = ((mundoData as any).countries || []) as Array<{ id: string; n: string }>;
   const countryObj = countries.find((c) => c.id === cause.country_code);
 
@@ -245,6 +267,8 @@ export default async function CauseDetailPage(props: CausePageProps) {
         initialComments={commentsRes.comments as any}
         initialCommentsHasMore={commentsRes.hasMore}
         initialCommentsTotal={countRes.count}
+        apoyosConfirmados={(confirmadosRes.data || []) as any}
+        avisosPendientes={(pendientesRes.data || []) as any}
       />
     </main>
   );

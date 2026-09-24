@@ -21,14 +21,20 @@ export function useUser() {
   const [user, setUser] = useState<User | null>(null);
   const [profile, setProfile] = useState<Profile | null>(null);
   const [hasPhone, setHasPhone] = useState<boolean>(true);
+  const [hasPendingSupports, setHasPendingSupports] = useState<boolean>(false);
   const [loading, setLoading] = useState(true);
   const mountedRef = useRef(true);
 
   const loadProfileData = useCallback(async (currentUser: User) => {
     const supabase = createClient();
-    const [profileRes, privateRes] = await Promise.all([
+    const [profileRes, privateRes, pendingRes] = await Promise.all([
       supabase.from("profiles").select("*").eq("id", currentUser.id).maybeSingle(),
       supabase.from("profile_private").select("phone").eq("id", currentUser.id).maybeSingle(),
+      supabase
+        .from("support_reports")
+        .select("id, cause:causes!inner(author_id)", { count: "exact", head: true })
+        .eq("status", "reportado")
+        .eq("cause.author_id", currentUser.id),
     ]);
 
     if (profileRes.error) {
@@ -37,10 +43,14 @@ export function useUser() {
     if (privateRes.error) {
       console.error("[useUser] profile_private:", privateRes.error.code, privateRes.error.message);
     }
+    if (pendingRes.error) {
+      console.error("[useUser] support_reports:", pendingRes.error.code, pendingRes.error.message);
+    }
 
     if (mountedRef.current) {
       if (!profileRes.error) setProfile(profileRes.data);
       if (!privateRes.error) setHasPhone(Boolean(privateRes.data?.phone));
+      if (!pendingRes.error) setHasPendingSupports((pendingRes.count ?? 0) > 0);
     }
   }, []);
 
@@ -72,6 +82,7 @@ export function useUser() {
             setUser(null);
             setProfile(null);
             setHasPhone(true);
+            setHasPendingSupports(false);
           }
           return;
         }
@@ -145,5 +156,5 @@ export function useUser() {
     if (currentUser) await loadProfileData(currentUser);
   }, [loadProfileData]);
 
-  return { user, profile, hasPhone, loading, refreshProfile };
+  return { user, profile, hasPhone, hasPendingSupports, loading, refreshProfile };
 }
