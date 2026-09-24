@@ -27,7 +27,7 @@ import {
 import { Glass } from "@/components/ui/Glass";
 import { comprimirFotoCausa } from "@/lib/media/comprimir";
 import { urlDeMedio } from "@/lib/media";
-import { defaultGeocoder, GeocodedCity } from "@/lib/geo/geocoder";
+import { defaultGeocoder, GeocodedCity, puntoDelPais } from "@/lib/geo/geocoder";
 import mundoData from "@/lib/geo/mundo.json";
 import { CauseCard } from "@/components/feed/CauseCard";
 import {
@@ -196,6 +196,10 @@ function NuevaCausaContent({
   const [citySearchQuery, setCitySearchQuery] = useState("");
   const [citySuggestions, setCitySuggestions] = useState<GeocodedCity[]>([]);
   const [searchingCities, setSearchingCities] = useState(false);
+  // Última búsqueda terminada (para mostrar "sin resultados" solo cuando ya respondió)
+  const [citySearchedFor, setCitySearchedFor] = useState("");
+  const [cityRemoteError, setCityRemoteError] = useState<string | null>(null);
+  const citySearchSeq = useRef(0);
 
   // Step 4: What do you need (Dinero, Insumos, Ambos)
   const [collectionType, setCollectionType] = useState<"dinero" | "insumos" | "ambas">("dinero");
@@ -419,21 +423,32 @@ function NuevaCausaContent({
 
   // City autocomplete search
   useEffect(() => {
-    if (!citySearchQuery || citySearchQuery.length < 2) {
+    const seq = ++citySearchSeq.current;
+    if (!citySearchQuery || citySearchQuery.trim().length < 2) {
       setCitySuggestions([]);
+      setSearchingCities(false);
+      setCityRemoteError(null);
+      setCitySearchedFor("");
       return;
     }
 
+    setSearchingCities(true);
     const timer = setTimeout(async () => {
-      setSearchingCities(true);
       try {
-        const results = await defaultGeocoder.searchCities(citySearchQuery, countryCode);
-        setCitySuggestions(results);
+        const { cities, remoteError } = await defaultGeocoder.searchCities(citySearchQuery, countryCode);
+        if (seq !== citySearchSeq.current) return; // llegó una búsqueda más nueva
+        setCitySuggestions(cities);
+        setCityRemoteError(remoteError);
       } catch (err: any) {
         console.error("Búsqueda de ciudades:", err?.name, err?.message);
+        if (seq !== citySearchSeq.current) return;
         setCitySuggestions([]);
+        setCityRemoteError(err?.message || "error desconocido");
       } finally {
-        setSearchingCities(false);
+        if (seq === citySearchSeq.current) {
+          setSearchingCities(false);
+          setCitySearchedFor(citySearchQuery);
+        }
       }
     }, 250);
 
@@ -447,7 +462,32 @@ function NuevaCausaContent({
     setLng(item.lng);
     setCitySearchQuery("");
     setCitySuggestions([]);
+    setFieldErrors((prev) => ({ ...prev, city: "" }));
   };
+
+  /**
+   * Ciudad escrita a mano (pueblos que no están en la lista): se guarda el texto tal cual y
+   * como coordenadas el punto del país de mundo.json, redondeado a 2 decimales.
+   */
+  const handleUseTypedCity = () => {
+    const name = citySearchQuery.trim().replace(/\s+/g, " ").slice(0, 80);
+    if (name.length < 2) return;
+    const punto = puntoDelPais(countryCode);
+    if (!punto) {
+      setFieldErrors((prev) => ({ ...prev, city: "No tenemos la ubicación de ese país. Elige otro país." }));
+      return;
+    }
+    setCity(name);
+    setRegion("");
+    setLat(punto.lat);
+    setLng(punto.lng);
+    setCitySearchQuery("");
+    setCitySuggestions([]);
+    setFieldErrors((prev) => ({ ...prev, city: "" }));
+  };
+
+  const typedCity = citySearchQuery.trim();
+  const citySearchFinished = !searchingCities && citySearchedFor === citySearchQuery && typedCity.length >= 2;
 
   // Media file handling
   const [isDragging, setIsDragging] = useState(false);
@@ -1559,6 +1599,27 @@ function NuevaCausaContent({
                 <p className="text-xs text-rose-400 font-medium mt-1.5">{fieldErrors.city}</p>
               )}
 
+              {/* Estado de la búsqueda: nunca queda mudo */}
+              {!city && typedCity.length >= 2 && searchingCities && (
+                <p className="text-xs text-text-secondary mt-1.5">Buscando…</p>
+              )}
+              {!city && citySearchFinished && cityRemoteError && (
+                <p className="text-xs text-rose-400 font-medium mt-1.5">
+                  No pudimos consultar el buscador de ciudades ({cityRemoteError}).{" "}
+                  <button type="button" onClick={handleUseTypedCity} className="text-accent underline hover:text-accent/80">
+                    Usar «{typedCity}» tal como la escribiste
+                  </button>
+                </p>
+              )}
+              {!city && citySearchFinished && !cityRemoteError && citySuggestions.length === 0 && (
+                <p className="text-xs text-text-secondary mt-1.5">
+                  No encontramos esa ciudad, puedes escribirla.{" "}
+                  <button type="button" onClick={handleUseTypedCity} className="text-accent underline hover:text-accent/80">
+                    Usar «{typedCity}»
+                  </button>
+                </p>
+              )}
+
               {/* Suggestions Dropdown */}
               {citySuggestions.length > 0 && !city && (
                 <div className="absolute left-0 right-0 top-full mt-2 rounded-2xl glass-tint border border-glass-tint shadow-2xl z-30 overflow-hidden py-1">
@@ -1578,12 +1639,19 @@ function NuevaCausaContent({
                       </span>
                     </button>
                   ))}
+                  <button
+                    type="button"
+                    onClick={handleUseTypedCity}
+                    className="w-full px-4 py-2.5 text-left text-xs hover:bg-glass-tint flex items-center justify-between text-text-secondary transition-colors"
+                  >
+                    <span>¿No está? Usar «{typedCity}» tal como la escribiste</span>
+                  </button>
                 </div>
               )}
             </div>
 
             {/* Selected Location Confirmation */}
-            {city && lat && lng && (
+            {city && lat !== null && lng !== null && (
               <div className="p-4 rounded-2xl glass-surface border border-emerald-500/30 flex items-center justify-between text-xs">
                 <div className="flex items-center gap-2">
                   <IconoCheckCirculo size={16} className="text-emerald-400" />
