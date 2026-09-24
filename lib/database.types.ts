@@ -583,6 +583,7 @@ export type Database = {
           onboarding_completed_at: string | null
           public_id: string
           updated_at: string
+          username: string | null
         }
         Insert: {
           avatar_url?: string | null
@@ -599,6 +600,7 @@ export type Database = {
           onboarding_completed_at?: string | null
           public_id?: string
           updated_at?: string
+          username?: string | null
         }
         Update: {
           avatar_url?: string | null
@@ -615,6 +617,7 @@ export type Database = {
           onboarding_completed_at?: string | null
           public_id?: string
           updated_at?: string
+          username?: string | null
         }
         Relationships: []
       }
@@ -728,11 +731,7 @@ export type Database = {
     }
     Functions: {
       complete_onboarding: {
-        Args: {
-          p_full_name: string
-          p_phone: string | null
-          p_terms_version: string
-        }
+        Args: { p_full_name: string; p_phone: string; p_terms_version: string }
         Returns: undefined
       }
       confirm_support: {
@@ -842,18 +841,20 @@ export type Database = {
       search_people_and_causes: {
         Args: { max_results?: number; q: string }
         Returns: {
-          country_code: string | null
+          country_code: string
           id: string
           kind: string
           label: string
-          lat: number | null
-          lng: number | null
-          public_id: string | null
+          lat: number
+          lng: number
+          public_id: string
           score: number
           sublabel: string
         }[]
       }
       sync_profile_method: { Args: { p_method_id: string }; Returns: number }
+      username_available: { Args: { p_username: string }; Returns: boolean }
+      username_is_valid: { Args: { p: string }; Returns: boolean }
     }
     Enums: {
       activity_kind: "causa_publicada" | "causa_cerrada" | "causa_finalizada"
