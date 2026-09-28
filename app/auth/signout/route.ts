@@ -17,7 +17,7 @@ async function doSignOut(request: NextRequest) {
   const origin =
     request.nextUrl.origin ||
     process.env.NEXT_PUBLIC_SITE_URL ||
-    "https://el-puente-five.vercel.app";
+    "https://www.elpuentesh.org";
   const response = NextResponse.redirect(new URL("/", origin));
 
   for (const c of allCookies) {

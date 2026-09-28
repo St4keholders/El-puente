@@ -81,7 +81,8 @@ export async function proxy(request: NextRequest) {
     pathname.startsWith("/terminos") ||
     pathname.startsWith("/privacidad") ||
     pathname.startsWith("/_next") ||
-    pathname === "/favicon.ico";
+    pathname === "/favicon.ico" ||
+    pathname === "/site.webmanifest";
 
   if (user && !isExemptRoute) {
     const { data: profile } = await supabase
@@ -102,6 +103,6 @@ export async function proxy(request: NextRequest) {
 
 export const config = {
   matcher: [
-    "/((?!_next/static|_next/image|favicon.ico|.*\\.(?:svg|png|jpg|jpeg|gif|webp)$).*)",
+    "/((?!_next/static|_next/image|favicon.ico|site.webmanifest|.*\\.(?:svg|png|jpg|jpeg|gif|webp|ico|webmanifest)$).*)",
   ],
 };
