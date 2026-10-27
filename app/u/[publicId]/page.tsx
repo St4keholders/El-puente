@@ -117,6 +117,8 @@ export default async function UserProfilePage(props: UserProfilePageProps) {
       finalized_at,
       comments_count,
       saves_count,
+      holder_match,
+      hidden_reason,
       media:cause_media(
         id,
         storage_path,

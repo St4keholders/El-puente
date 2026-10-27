@@ -7,6 +7,7 @@ import { Footer } from "@/components/layout/Footer";
 import { QueryProvider } from "@/components/providers/QueryProvider";
 import { FondoGlobal } from "@/components/fondo/FondoGlobal";
 import { siteConfig } from "@/lib/config/site";
+import { RecordatorioVerificacionModal } from "@/components/identity/RecordatorioVerificacionModal";
 
 const instrumentSans = Instrument_Sans({
   subsets: ["latin"],
@@ -79,6 +80,7 @@ export default function RootLayout({
             <Footer />
           </div>
           <BottomNav />
+          <RecordatorioVerificacionModal />
         </QueryProvider>
       </body>
     </html>

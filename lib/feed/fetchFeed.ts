@@ -111,11 +111,15 @@ export async function fetchFeedPage(
       saves_count,
       collection_type,
       is_example,
+      holder_match,
+      holder_checked_at,
+      hidden_reason,
       author:profiles!causes_author_id_fkey(
         id,
         full_name,
         public_id,
-        avatar_url
+        avatar_url,
+        identity_verified
       ),
       media:cause_media(
         id,
@@ -166,11 +170,15 @@ export async function fetchFeedPage(
         saves_count,
         collection_type,
         is_example,
+        holder_match,
+        holder_checked_at,
+        hidden_reason,
         author:profiles!causes_author_id_fkey(
           id,
           full_name,
           public_id,
-          avatar_url
+          avatar_url,
+          identity_verified
         ),
         media:cause_media(
           id,
@@ -375,11 +383,15 @@ export async function fetchFeedPage(
       collection_type: c.collection_type || "dinero",
       is_example: Boolean(c.is_example),
       supplies: suppliesByCause[c.id] || [],
+      holder_match: c.holder_match,
+      holder_checked_at: c.holder_checked_at,
+      hidden_reason: c.hidden_reason,
       author: {
         id: author.id,
         full_name: author.full_name || "Usuario",
         public_id: author.public_id || "",
         avatar_url: author.avatar_url,
+        identity_verified: Boolean(author.identity_verified),
       },
       media: causeMediaItems,
       resultsMedia: resultsMediaItems,

@@ -103,6 +103,8 @@ export default async function CauseDetailPage(props: CausePageProps) {
       created_at,
       closing_note,
       author_id,
+      holder_match,
+      holder_checked_at,
       collection_type,
       supplies_instructions,
       is_example,
@@ -112,7 +114,8 @@ export default async function CauseDetailPage(props: CausePageProps) {
         full_name,
         public_id,
         avatar_url,
-        bio
+        bio,
+        identity_verified
       ),
       media:cause_media(
         id,

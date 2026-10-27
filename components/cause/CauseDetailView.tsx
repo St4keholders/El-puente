@@ -86,6 +86,8 @@ interface CauseDetailViewProps {
     finalized_at?: string | null;
     closing_note?: string | null;
     author_id: string;
+    holder_match?: boolean | null;
+    holder_checked_at?: string | null;
     collection_type?: "dinero" | "insumos" | "ambas";
     supplies_instructions?: string | null;
     is_example?: boolean;
@@ -96,6 +98,7 @@ interface CauseDetailViewProps {
       public_id: string;
       avatar_url?: string | null;
       bio?: string | null;
+      identity_verified?: boolean;
     };
     media: MediaItem[];
   };
@@ -565,9 +568,21 @@ export function CauseDetailView({
           </div>
 
           <div className="min-w-0">
-            <p className="font-bold text-text-primary text-sm sm:text-base hover:underline truncate">
-              {cause.author.full_name}
-            </p>
+            <div className="flex items-center gap-1.5 flex-wrap">
+              <p className="font-bold text-text-primary text-sm sm:text-base hover:underline truncate">
+                {cause.author.full_name}
+              </p>
+              {cause.author.identity_verified && (
+                <span
+                  title="Identidad verificada"
+                  aria-label="Identidad verificada"
+                  className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-semibold bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20 flex-shrink-0"
+                >
+                  <IconoCheckCirculo size={12} />
+                  <span>Identidad verificada</span>
+                </span>
+              )}
+            </div>
             <p className="text-xs text-text-secondary">{cause.author.public_id}</p>
           </div>
         </Link>
@@ -719,18 +734,38 @@ export function CauseDetailView({
               )}
             </div>
 
-            {/* Aviso */}
+            {/* Aviso permanente (Sección 9.2) */}
             <div className="p-4 rounded-2xl bg-amber-500/10 border border-amber-500/20 text-amber-400 text-xs flex items-start gap-3">
               <IconoAlerta size={18} className="flex-shrink-0 mt-0.5" />
               <div>
                 <p className="font-semibold">
-                  Puente no procesa donaciones. Verifica los datos antes de enviar dinero.
+                  Puente verifica identidades, pero no garantiza el uso de los fondos.
                 </p>
                 <p className="mt-0.5 opacity-90">
                   Las donaciones son 100% directas entre tú y quien publica. Sin comisiones.
                 </p>
               </div>
             </div>
+
+            {/* Frase de coincidencia de titularidad (Sección 9.2) */}
+            {cause.author.identity_verified && cause.holder_match && (
+              <div className="p-3.5 rounded-2xl bg-emerald-500/10 border border-emerald-500/20 text-emerald-600 dark:text-emerald-400 text-xs flex items-center gap-2.5">
+                <IconoCheckCirculo size={18} className="flex-shrink-0" />
+                <span className="font-medium">
+                  Identidad verificada. El titular de esta cuenta coincide con el documento verificado.
+                </span>
+              </div>
+            )}
+
+            {/* Aviso a la autora si el titular no coincide (Sección 7) */}
+            {isOwner && cause.holder_match === false && (
+              <div className="p-3.5 rounded-2xl bg-amber-500/10 border border-amber-500/20 text-amber-500 text-xs flex items-center gap-2.5">
+                <IconoAlerta size={18} className="flex-shrink-0" />
+                <span className="font-semibold">
+                  Revisa tus métodos de pago: el titular no coincide con tu identidad verificada.
+                </span>
+              </div>
+            )}
 
             {cause.status === "cerrada" || cause.status === "finalizada" ? (
               <div className="p-6 rounded-3xl glass-card text-center text-text-secondary text-sm">

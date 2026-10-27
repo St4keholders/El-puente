@@ -10,7 +10,7 @@ export type Database = {
   // Allows to automatically instantiate createClient with right options
   // instead of createClient<Database, { PostgrestVersion: 'XX' }>(URL, KEY)
   __InternalSupabase: {
-    PostgrestVersion: "14.5"
+    PostgrestVersion: "14.17"
   }
   public: {
     Tables: {
@@ -239,6 +239,9 @@ export type Database = {
           finalized_at: string | null
           first_support_confirmed_at: string | null
           goal_amount: number | null
+          hidden_reason: string | null
+          holder_checked_at: string | null
+          holder_match: boolean | null
           id: string
           is_example: boolean
           is_seed: boolean
@@ -268,6 +271,9 @@ export type Database = {
           finalized_at?: string | null
           first_support_confirmed_at?: string | null
           goal_amount?: number | null
+          hidden_reason?: string | null
+          holder_checked_at?: string | null
+          holder_match?: boolean | null
           id?: string
           is_example?: boolean
           is_seed?: boolean
@@ -297,6 +303,9 @@ export type Database = {
           finalized_at?: string | null
           first_support_confirmed_at?: string | null
           goal_amount?: number | null
+          hidden_reason?: string | null
+          holder_checked_at?: string | null
+          holder_match?: boolean | null
           id?: string
           is_example?: boolean
           is_seed?: boolean
@@ -436,6 +445,27 @@ export type Database = {
           },
         ]
       }
+      didit_webhook_events: {
+        Row: {
+          event_id: string
+          processed_at: string
+          session_id: string | null
+          webhook_type: string | null
+        }
+        Insert: {
+          event_id: string
+          processed_at?: string
+          session_id?: string | null
+          webhook_type?: string | null
+        }
+        Update: {
+          event_id?: string
+          processed_at?: string
+          session_id?: string | null
+          webhook_type?: string | null
+        }
+        Relationships: []
+      }
       donation_methods: {
         Row: {
           account_holder: string
@@ -530,6 +560,65 @@ export type Database = {
           {
             foreignKeyName: "follows_following_id_fkey"
             columns: ["following_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      identity_verifications: {
+        Row: {
+          created_at: string
+          decline_reason: string | null
+          document_country: string | null
+          document_hash: string | null
+          expires_at: string | null
+          id: string
+          level: number
+          provider: string
+          provider_session_id: string | null
+          status: Database["public"]["Enums"]["verification_status"]
+          updated_at: string
+          user_id: string
+          verified_at: string | null
+          verified_full_name: string | null
+        }
+        Insert: {
+          created_at?: string
+          decline_reason?: string | null
+          document_country?: string | null
+          document_hash?: string | null
+          expires_at?: string | null
+          id?: string
+          level?: number
+          provider?: string
+          provider_session_id?: string | null
+          status?: Database["public"]["Enums"]["verification_status"]
+          updated_at?: string
+          user_id: string
+          verified_at?: string | null
+          verified_full_name?: string | null
+        }
+        Update: {
+          created_at?: string
+          decline_reason?: string | null
+          document_country?: string | null
+          document_hash?: string | null
+          expires_at?: string | null
+          id?: string
+          level?: number
+          provider?: string
+          provider_session_id?: string | null
+          status?: Database["public"]["Enums"]["verification_status"]
+          updated_at?: string
+          user_id?: string
+          verified_at?: string | null
+          verified_full_name?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "identity_verifications_user_id_fkey"
+            columns: ["user_id"]
             isOneToOne: false
             referencedRelation: "profiles"
             referencedColumns: ["id"]
@@ -633,6 +722,8 @@ export type Database = {
           following_count: number
           full_name: string
           id: string
+          identity_verified: boolean
+          identity_verified_at: string | null
           is_seed: boolean
           onboarding_completed_at: string | null
           public_id: string
@@ -649,6 +740,8 @@ export type Database = {
           following_count?: number
           full_name?: string
           id: string
+          identity_verified?: boolean
+          identity_verified_at?: string | null
           is_seed?: boolean
           onboarding_completed_at?: string | null
           public_id?: string
@@ -665,6 +758,8 @@ export type Database = {
           following_count?: number
           full_name?: string
           id?: string
+          identity_verified?: boolean
+          identity_verified_at?: string | null
           is_seed?: boolean
           onboarding_completed_at?: string | null
           public_id?: string
@@ -879,7 +974,6 @@ export type Database = {
       create_example_cause: { Args: never; Returns: string }
       escape_like: { Args: { t: string }; Returns: string }
       f_unaccent: { Args: { "": string }; Returns: string }
-      gen_public_id: { Args: never; Returns: string }
       feed_causes: {
         Args: {
           p_category?: Database["public"]["Enums"]["cause_category"]
@@ -906,6 +1000,9 @@ export type Database = {
           finalized_at: string | null
           first_support_confirmed_at: string | null
           goal_amount: number | null
+          hidden_reason: string | null
+          holder_checked_at: string | null
+          holder_match: boolean | null
           id: string
           is_example: boolean
           is_seed: boolean
@@ -937,7 +1034,21 @@ export type Database = {
         }
         Returns: Json
       }
+      gen_public_id: { Args: never; Returns: string }
       is_onboarded: { Args: never; Returns: boolean }
+      procesar_verificacion_didit: {
+        Args: {
+          p_country?: string
+          p_decline_reason?: string
+          p_document_hash?: string
+          p_event_id: string
+          p_full_name?: string
+          p_session_id: string
+          p_status: string
+          p_user_id: string
+        }
+        Returns: Json
+      }
       recent_closures: {
         Args: { p_days?: number; p_limit?: number }
         Returns: {
@@ -955,6 +1066,9 @@ export type Database = {
           finalized_at: string | null
           first_support_confirmed_at: string | null
           goal_amount: number | null
+          hidden_reason: string | null
+          holder_checked_at: string | null
+          holder_match: boolean | null
           id: string
           is_example: boolean
           is_seed: boolean
@@ -977,6 +1091,7 @@ export type Database = {
         }
       }
       rechazar_aviso: { Args: { p_report_id: string }; Returns: undefined }
+      revisar_titularidad: { Args: { p_cause_id: string }; Returns: boolean }
       search_people_and_causes: {
         Args: { max_results?: number; q: string }
         Returns: {
@@ -992,6 +1107,10 @@ export type Database = {
         }[]
       }
       sync_profile_method: { Args: { p_method_id: string }; Returns: number }
+      titular_coincide: {
+        Args: { p_titular: string; p_verificado: string }
+        Returns: boolean
+      }
     }
     Enums: {
       activity_kind: "causa_publicada" | "causa_cerrada" | "causa_finalizada"
@@ -1025,6 +1144,12 @@ export type Database = {
         | "otro"
       support_kind: "dinero" | "insumos"
       support_status: "reportado" | "confirmado" | "no_recibido"
+      verification_status:
+        | "pendiente"
+        | "aprobada"
+        | "rechazada"
+        | "en_revision"
+        | "vencida"
     }
     CompositeTypes: {
       [_ in never]: never
@@ -1186,6 +1311,13 @@ export const Constants = {
       ],
       support_kind: ["dinero", "insumos"],
       support_status: ["reportado", "confirmado", "no_recibido"],
+      verification_status: [
+        "pendiente",
+        "aprobada",
+        "rechazada",
+        "en_revision",
+        "vencida",
+      ],
     },
   },
 } as const

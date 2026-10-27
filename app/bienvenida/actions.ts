@@ -32,6 +32,14 @@ export async function completeOnboardingAction(data: OnboardingInput) {
     };
   }
 
+  const phone = (data.phoneNumber || "").trim();
+  if (!phone) {
+    return {
+      success: false,
+      error: "Ingresa tu número de teléfono de contacto.",
+    };
+  }
+
   const supabase = await createClient();
   const {
     data: { user },
@@ -48,7 +56,7 @@ export async function completeOnboardingAction(data: OnboardingInput) {
 
   const { error: rpcErr } = await supabase.rpc("complete_onboarding", {
     p_full_name: name,
-    p_phone: data.phoneNumber || null,
+    p_phone: phone,
     p_terms_version: data.termsVersion || "v1.0",
   });
 

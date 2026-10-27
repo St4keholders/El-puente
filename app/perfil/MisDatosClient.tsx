@@ -2,6 +2,7 @@
 
 import React, { useState, useRef, useEffect } from "react";
 import { useRouter } from "next/navigation";
+import Link from "next/link";
 import { Glass } from "@/components/ui/Glass";
 import {
   IconoCheckCirculo,
@@ -46,6 +47,12 @@ interface MisDatosClientProps {
   userEmail: string;
   initialProfile: Profile | null;
   initialPhone: string | null;
+  initialVerification?: {
+    status: "pendiente" | "aprobada" | "rechazada" | "en_revision" | "vencida";
+    verified_at: string | null;
+    expires_at: string | null;
+    decline_reason: string | null;
+  } | null;
 }
 
 export function MisDatosClient({
@@ -53,6 +60,7 @@ export function MisDatosClient({
   userEmail,
   initialProfile,
   initialPhone,
+  initialVerification,
 }: MisDatosClientProps) {
   let parsedCountry = "CO";
   let parsedNumber = "";
@@ -67,6 +75,25 @@ export function MisDatosClient({
       parsedNumber = initialPhone;
     }
   }
+
+  const isProfileVerified = Boolean((initialProfile as any)?.identity_verified);
+  const verifStatus = initialVerification?.status;
+  const isExpired =
+    initialVerification?.expires_at &&
+    new Date(initialVerification.expires_at) <= new Date();
+  const isVerified = (isProfileVerified || verifStatus === "aprobada") && !isExpired;
+  const isEnRevision = verifStatus === "en_revision";
+  const isPendiente = verifStatus === "pendiente";
+  const isRechazada = verifStatus === "rechazada";
+  const isVencida = Boolean(isExpired);
+
+  const expDate = initialVerification?.expires_at
+    ? new Date(initialVerification.expires_at).toLocaleDateString("es-ES", {
+        year: "numeric",
+        month: "long",
+        day: "numeric",
+      })
+    : null;
 
   const [avatarValue, setAvatarValue] = useState<string | null>(initialProfile?.avatar_url || null);
   const avatarUrl = urlDeAvatar(avatarValue);
@@ -230,6 +257,56 @@ export function MisDatosClient({
 
       <form onSubmit={handleSave}>
         <div className="p-6 sm:p-8 rounded-3xl border border-[var(--line)] bg-[color-mix(in_oklab,var(--bg)_84%,transparent)] shadow-sm space-y-6">
+          {/* Estado de Verificación de Identidad (Sección 9.2) */}
+          <div className="p-4 rounded-2xl border border-[var(--line)] bg-[var(--field)] flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
+            <div className="flex items-center gap-3">
+              <div
+                className={`w-9 h-9 rounded-2xl flex items-center justify-center flex-shrink-0 ${
+                  isVerified
+                    ? "bg-emerald-500/15 text-emerald-500"
+                    : isEnRevision
+                    ? "bg-amber-500/15 text-amber-500"
+                    : "bg-[var(--hover)] text-[var(--ink-3)]"
+                }`}
+              >
+                <IconoCheckCirculo size={20} />
+              </div>
+              <div className="space-y-0.5">
+                <div className="flex items-center gap-2">
+                  <span className="text-xs font-semibold text-[var(--ink)]">
+                    {isVerified
+                      ? "Identidad verificada"
+                      : isEnRevision
+                      ? "Verificación en revisión"
+                      : isPendiente
+                      ? "Verificación en curso"
+                      : isRechazada
+                      ? "Verificación rechazada"
+                      : isVencida
+                      ? "Verificación vencida"
+                      : "Identidad no verificada"}
+                  </span>
+                  {isVerified && (
+                    <span className="text-[10px] font-mono px-2 py-0.5 rounded-full bg-emerald-500/10 text-emerald-600 font-semibold border border-emerald-500/20">
+                      Nivel 1
+                    </span>
+                  )}
+                </div>
+                <p className="text-[11px] text-[var(--ink-3)]">
+                  {isVerified && expDate
+                    ? `Vigente hasta el ${expDate}`
+                    : "Obligatoria para publicar causas y dar confianza a los donantes."}
+                </p>
+              </div>
+            </div>
+            <Link
+              href="/verificacion"
+              className="py-2 px-4 rounded-xl border border-[var(--line)] bg-[var(--surface-solid)] text-xs font-semibold text-[var(--ink)] hover:bg-[var(--hover)] transition-colors inline-flex items-center gap-1.5 flex-shrink-0"
+            >
+              {isVerified ? "Ver estado" : isVencida ? "Renovar" : isRechazada ? "Reintentar" : "Verificar ahora"}
+            </Link>
+          </div>
+
           {/* Foto de Perfil */}
           <div className="flex items-center gap-6 pb-6 border-b border-[var(--line)]">
             <div className="relative w-20 h-20 rounded-full overflow-hidden border-2 border-[var(--line)] bg-[var(--avatar)] flex items-center justify-center flex-shrink-0 shadow-md">

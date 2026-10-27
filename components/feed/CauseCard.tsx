@@ -10,6 +10,7 @@ import {
   IconoFlechaDerecha,
   IconoMenu,
   IconoCheck,
+  IconoCheckCirculo,
   IconoAlerta,
   IconoFlechaDerecha as IconoVerMas,
 } from "@/components/iconos";
@@ -34,6 +35,7 @@ export interface CauseAuthor {
   full_name: string;
   public_id: string;
   avatar_url?: string | null;
+  identity_verified?: boolean;
 }
 
 export interface CauseCardProps {
@@ -53,6 +55,9 @@ export interface CauseCardProps {
   currency?: string;
   comments_count?: number;
   saves_count?: number;
+  holder_match?: boolean | null;
+  holder_checked_at?: string | null;
+  hidden_reason?: string | null;
   author: CauseAuthor;
   media: CauseMediaItem[];
   recentComments?: Array<{
@@ -121,6 +126,9 @@ export function CauseCard({
   currency = "USD",
   comments_count = 0,
   saves_count = 0,
+  holder_match,
+  holder_checked_at,
+  hidden_reason,
   author,
   media = [],
   resultsSummary,
@@ -246,6 +254,22 @@ export function CauseCard({
         className="w-full rounded-2xl sm:rounded-3xl border border-[var(--line)] bg-[color-mix(in_oklab,var(--bg)_84%,transparent)] transition-all duration-200 overflow-hidden hover:border-[var(--glass-edge)] hover:shadow-lg"
         style={{ backdropFilter: "none" }}
       >
+        {status === "oculta" && (
+          <div className="bg-rose-500/15 border-b border-rose-500/30 px-4 py-2.5 text-xs text-rose-300 flex items-center gap-2">
+            <IconoAlerta size={16} className="text-rose-400 flex-shrink-0" />
+            <span>
+              {hidden_reason || "Causa suspendida temporalmente por acumulación de reportes de la comunidad."}
+            </span>
+          </div>
+        )}
+        {isOwner && holder_match === false && status === "activa" && (
+          <div className="bg-amber-500/15 border-b border-amber-500/30 px-4 py-2 text-xs text-amber-300 flex items-center gap-2">
+            <IconoAlerta size={15} className="text-amber-400 flex-shrink-0" />
+            <span>
+              Tus métodos de pago no coinciden con tu identidad verificada. Actualízalos para que la causa siga activa.
+            </span>
+          </div>
+        )}
         <div className="flex flex-col @[640px]:flex-row @[640px]:items-stretch">
           {/* ====================================================
               COLUMNA IZQUIERDA / SUPERIOR: MEDIOS
@@ -381,6 +405,15 @@ export function CauseCard({
                       >
                         {author.full_name}
                       </Link>
+                      {author.identity_verified && (
+                        <span
+                          className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 text-[10px] font-medium flex-shrink-0"
+                          title="Identidad verificada por Puente"
+                        >
+                          <IconoCheckCirculo size={11} className="text-emerald-400" />
+                          <span>Verificado</span>
+                        </span>
+                      )}
                     </div>
                   </div>
                 </div>

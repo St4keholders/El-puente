@@ -66,19 +66,22 @@ export function BienvenidaForm({
       return;
     }
 
+    if (!phoneNumber.trim()) {
+      setErrorMsg("Ingresa tu número de contacto.");
+      return;
+    }
+
     let formattedPhone: string | null = null;
-    if (phoneNumber.trim()) {
-      try {
-        const parsed = parsePhoneNumber(phoneNumber, phoneCountry as CountryCode);
-        if (!parsed || !parsed.isValid()) {
-          setErrorMsg("Revisa el número, parece incompleto.");
-          return;
-        }
-        formattedPhone = parsed.format("E.164");
-      } catch {
+    try {
+      const parsed = parsePhoneNumber(phoneNumber, phoneCountry as CountryCode);
+      if (!parsed || !parsed.isValid()) {
         setErrorMsg("Revisa el número, parece incompleto.");
         return;
       }
+      formattedPhone = parsed.format("E.164");
+    } catch {
+      setErrorMsg("Revisa el número, parece incompleto.");
+      return;
     }
 
     if (!acceptTerms) {
@@ -236,14 +239,14 @@ export function BienvenidaForm({
             </div>
           </div>
 
-          {/* Número de contacto (opcional) */}
+          {/* Número de contacto (obligatorio) */}
           <div>
             <div className="flex items-center justify-between mb-1.5">
               <label
                 htmlFor="phoneNumber"
                 className="block text-xs font-semibold uppercase tracking-wider text-[var(--ink-2)]"
               >
-                Número de contacto <span className="text-[var(--ink-3)]">(opcional)</span>
+                Número de contacto
               </label>
               <span className="text-[10px] font-mono px-2 py-0.5 rounded-full bg-[var(--hover)] text-[var(--ink-3)]">
                 Privado
@@ -274,7 +277,7 @@ export function BienvenidaForm({
               />
             </div>
             <p className="mt-1 text-[11px] text-[var(--ink-3)]">
-              Privado. Lo necesitarás si publicas una causa.
+              Privado. Solo lo usamos para contactarte sobre tu cuenta o tus causas.
             </p>
           </div>
 

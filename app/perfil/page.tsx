@@ -27,12 +27,21 @@ export default async function MisDatosPage() {
     .eq("id", user.id)
     .maybeSingle();
 
+  const { data: verif } = await supabase
+    .from("identity_verifications")
+    .select("status, verified_at, expires_at, decline_reason")
+    .eq("user_id", user.id)
+    .order("created_at", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+
   return (
     <MisDatosClient
       userId={user.id}
       userEmail={user.email || ""}
       initialProfile={profile}
       initialPhone={priv?.phone || null}
+      initialVerification={verif || null}
     />
   );
 }

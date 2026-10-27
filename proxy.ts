@@ -12,6 +12,11 @@ function createRedirectWithCookies(url: URL | string, baseResponse: NextResponse
 export async function proxy(request: NextRequest) {
   const pathname = request.nextUrl.pathname;
 
+  // Webhooks sin sesión ni cookies (Sección 8.3)
+  if (pathname.startsWith("/api/webhooks/")) {
+    return NextResponse.next();
+  }
+
   let supabaseResponse = NextResponse.next({
     request,
   });
@@ -85,13 +90,20 @@ export async function proxy(request: NextRequest) {
     pathname === "/site.webmanifest";
 
   if (user && !isExemptRoute) {
-    const { data: profile } = await supabase
-      .from("profiles")
-      .select("onboarding_completed_at")
-      .eq("id", user.id)
-      .maybeSingle();
+    const [{ data: profile }, { data: privateData }] = await Promise.all([
+      supabase
+        .from("profiles")
+        .select("onboarding_completed_at")
+        .eq("id", user.id)
+        .maybeSingle(),
+      supabase
+        .from("profile_private")
+        .select("phone")
+        .eq("id", user.id)
+        .maybeSingle(),
+    ]);
 
-    if (!profile?.onboarding_completed_at) {
+    if (!profile?.onboarding_completed_at || !privateData?.phone) {
       const bienvenidaUrl = new URL("/bienvenida", request.url);
       bienvenidaUrl.searchParams.set("next", pathname);
       return createRedirectWithCookies(bienvenidaUrl, supabaseResponse);

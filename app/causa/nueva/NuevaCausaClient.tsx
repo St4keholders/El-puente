@@ -173,7 +173,12 @@ function NuevaCausaContent({
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
   const [advancing, setAdvancing] = useState(false);
   const [actionError, setActionError] = useState<string | null>(null);
-  const [publishError, setPublishError] = useState<{ message: string; step?: number } | null>(null);
+  const [publishError, setPublishError] = useState<{
+    message: string;
+    step?: number;
+    actionLink?: string;
+    actionLabel?: string;
+  } | null>(null);
   const [isPublishing, setIsPublishing] = useState(false);
 
   // Step 1: Media
@@ -992,7 +997,10 @@ function NuevaCausaContent({
     }
   };
 
-  const PUBLISH_ERRORS: Record<string, { message: string; step: number }> = {
+  const PUBLISH_ERRORS: Record<
+    string,
+    { message: string; step: number; actionLink?: string; actionLabel?: string }
+  > = {
     REQ_IMAGENES: { message: "Agrega al menos 2 fotos.", step: 1 },
     REQ_TITULO: { message: "El título debe tener entre 10 y 90 caracteres.", step: 2 },
     REQ_DESCRIPCION: { message: "La historia necesita al menos 80 caracteres.", step: 2 },
@@ -1001,6 +1009,16 @@ function NuevaCausaContent({
     REQ_INSUMOS: { message: "Agrega al menos un insumo.", step: 4 },
     REQ_ENTREGA: { message: "Explica cómo pueden entregarte los insumos.", step: 4 },
     REQ_TELEFONO: { message: "Agrega tu número de contacto.", step: 5 },
+    REQ_VERIFICACION: {
+      message: "Verifica tu identidad para publicar tu causa. Toma unos 2 minutos.",
+      step: 5,
+      actionLink: "/verificacion?next=/causa/nueva",
+      actionLabel: "Verificar mi identidad →",
+    },
+    REQ_TITULAR: {
+      message: "El titular de tu cuenta debe coincidir con el nombre de tu documento. Revisa tus métodos de pago.",
+      step: 4,
+    },
   };
 
   // Step 5: Publish Cause Action
@@ -1189,6 +1207,14 @@ function NuevaCausaContent({
               >
                 Ir al paso {publishError.step} para corregir
               </button>
+            )}
+            {publishError.actionLink && (
+              <Link
+                href={publishError.actionLink}
+                className="underline text-xs mt-1.5 font-semibold text-[var(--accent)] hover:opacity-85 block"
+              >
+                {publishError.actionLabel || "Continuar →"}
+              </Link>
             )}
             {publishError.message.includes("perfil") && (
               <Link href="/perfil" className="underline text-xs mt-1 font-medium block">

@@ -14,6 +14,7 @@ import {
   IconoFlechaDerecha,
   IconoCorazon,
   IconoUsuarios,
+  IconoCheckCirculo,
 } from "@/components/iconos";
 import { Glass } from "@/components/ui/Glass";
 import { CauseCard, CauseCardProps } from "@/components/feed/CauseCard";
@@ -32,6 +33,7 @@ interface UserProfileViewProps {
     bio?: string | null;
     city?: string | null;
     country_code?: string | null;
+    identity_verified?: boolean;
     causes_count: number;
     followers_count: number;
     following_count: number;
@@ -136,9 +138,20 @@ export function UserProfileView({
             </div>
 
             <div className="space-y-1 min-w-0">
-              <h1 className="text-xl sm:text-2xl font-black text-text-primary tracking-tight">
-                {profile.full_name}
-              </h1>
+              <div className="flex items-center gap-2 flex-wrap">
+                <h1 className="text-xl sm:text-2xl font-black text-text-primary tracking-tight">
+                  {profile.full_name}
+                </h1>
+                {profile.identity_verified && (
+                  <span
+                    className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 text-xs font-medium"
+                    title="Identidad verificada por Puente"
+                  >
+                    <IconoCheckCirculo size={13} className="text-emerald-400" />
+                    <span>Identidad verificada</span>
+                  </span>
+                )}
+              </div>
               <p className="text-xs text-text-secondary font-mono">{profile.public_id}</p>
               {locationText && (
                 <p className="text-xs text-text-secondary flex items-center gap-1 pt-0.5">
@@ -280,7 +293,10 @@ export function UserProfileView({
                     full_name: profile.full_name,
                     public_id: profile.public_id,
                     avatar_url: profile.avatar_url,
+                    identity_verified: Boolean(profile.identity_verified),
                   }}
+                  holder_match={c.holder_match}
+                  hidden_reason={c.hidden_reason}
                   media={causeMedia}
                   resultsMedia={resultsMedia}
                   resultsSummary={c.results?.summary || null}

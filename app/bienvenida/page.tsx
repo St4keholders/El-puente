@@ -25,20 +25,30 @@ export default async function BienvenidaPage({ searchParams }: BienvenidaPagePro
     redirect(`/entrar?next=${encodeURIComponent(next)}`);
   }
 
-  // Comprobar estado de perfil existente
-  const { data: profile, error: profileErr } = await supabase
-    .from("profiles")
-    .select("onboarding_completed_at, full_name, public_id, avatar_url, country_code, city")
-    .eq("id", user.id)
-    .maybeSingle();
+  // Comprobar estado de perfil y teléfono existente
+  const [profileRes, privateRes] = await Promise.all([
+    supabase
+      .from("profiles")
+      .select("onboarding_completed_at, full_name, public_id, avatar_url, country_code, city")
+      .eq("id", user.id)
+      .maybeSingle(),
+    supabase
+      .from("profile_private")
+      .select("phone")
+      .eq("id", user.id)
+      .maybeSingle(),
+  ]);
 
-  if (profileErr) {
-    console.error("/bienvenida profiles:", profileErr.code, profileErr.message);
-    throw new Error(`No pudimos leer tu perfil: ${profileErr.message}`);
+  if (profileRes.error) {
+    console.error("/bienvenida profiles:", profileRes.error.code, profileRes.error.message);
+    throw new Error(`No pudimos leer tu perfil: ${profileRes.error.message}`);
   }
 
-  // Si ya completó onboarding, llevarlo de inmediato a su destino
-  if (profile?.onboarding_completed_at) {
+  const profile = profileRes.data;
+  const hasPhone = Boolean(privateRes.data?.phone);
+
+  // Si ya completó onboarding y tiene teléfono obligatorio, llevarlo de inmediato a su destino
+  if (profile?.onboarding_completed_at && hasPhone) {
     redirect(next);
   }
 

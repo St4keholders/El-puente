@@ -14,7 +14,7 @@ import {
 } from "@/components/iconos";
 import { ModalRegistrarApoyo } from "@/components/cause/ModalRegistrarApoyo";
 
-export type CauseStatusTab = "borrador" | "activa" | "cerrada" | "finalizada";
+export type CauseStatusTab = "borrador" | "activa" | "cerrada" | "finalizada" | "oculta";
 
 interface TabConfig {
   key: CauseStatusTab;
@@ -26,6 +26,7 @@ const TABS: TabConfig[] = [
   { key: "activa", label: "Activas" },
   { key: "cerrada", label: "Cerradas" },
   { key: "finalizada", label: "Finalizadas" },
+  { key: "oculta", label: "Suspendidas" },
 ];
 
 export interface ExtendedCauseCardProps extends CauseCardProps {
@@ -85,11 +86,12 @@ export function MisCausasClient({
 
   const fetchCounts = useCallback(async () => {
     try {
-      const [borradoresRes, activasRes, cerradasRes, finalizadasRes, exRowRes] = await Promise.all([
+      const [borradoresRes, activasRes, cerradasRes, finalizadasRes, ocultasRes, exRowRes] = await Promise.all([
         supabase.from("causes").select("id", { count: "exact", head: true }).eq("author_id", userId).eq("status", "borrador"),
         supabase.from("causes").select("id", { count: "exact", head: true }).eq("author_id", userId).eq("status", "activa"),
         supabase.from("causes").select("id", { count: "exact", head: true }).eq("author_id", userId).eq("status", "cerrada"),
         supabase.from("causes").select("id", { count: "exact", head: true }).eq("author_id", userId).eq("status", "finalizada"),
+        supabase.from("causes").select("id", { count: "exact", head: true }).eq("author_id", userId).eq("status", "oculta"),
         supabase.from("causes").select("id").eq("author_id", userId).eq("is_example", true).maybeSingle(),
       ]);
 
@@ -98,6 +100,7 @@ export function MisCausasClient({
         activa: activasRes.count || 0,
         cerrada: cerradasRes.count || 0,
         finalizada: finalizadasRes.count || 0,
+        oculta: ocultasRes.count || 0,
       });
       setHasExampleCause(Boolean(exRowRes.data));
     } catch (err) {
@@ -141,11 +144,15 @@ export function MisCausasClient({
         is_example: c.is_example,
         first_support_confirmed_at: c.first_support_confirmed_at,
         supplies: suppliesList,
+        holder_match: c.holder_match,
+        holder_checked_at: c.holder_checked_at,
+        hidden_reason: c.hidden_reason,
         author: {
           id: c.profiles?.id || userId,
           full_name: c.profiles?.full_name || "Mi perfil",
           public_id: c.profiles?.public_id || "",
           avatar_url: c.profiles?.avatar_url,
+          identity_verified: Boolean(c.profiles?.identity_verified),
         },
         media,
         resultsSummary: results?.summary || null,
@@ -188,7 +195,10 @@ export function MisCausasClient({
             collection_type,
             is_example,
             first_support_confirmed_at,
-            profiles:author_id(id, full_name, public_id, avatar_url),
+            holder_match,
+            holder_checked_at,
+            hidden_reason,
+            profiles:author_id(id, full_name, public_id, avatar_url, identity_verified),
             cause_media(id, storage_path, kind, position, width, height),
             cause_results(summary, amount_received),
             cause_supplies(id, name, unit, quantity_needed, quantity_received, position)

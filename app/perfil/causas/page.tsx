@@ -16,13 +16,14 @@ export default async function MisCausasPage() {
     redirect("/entrar?next=/perfil/causas");
   }
 
-  const [borradoresRes, activasRes, cerradasRes, finalizadasRes, exRowRes, profileRes] = await Promise.all([
+  const [borradoresRes, activasRes, cerradasRes, finalizadasRes, ocultasRes, exRowRes, profileRes] = await Promise.all([
     supabase.from("causes").select("id", { count: "exact", head: true }).eq("author_id", user.id).eq("status", "borrador"),
     supabase.from("causes").select("id", { count: "exact", head: true }).eq("author_id", user.id).eq("status", "activa"),
     supabase.from("causes").select("id", { count: "exact", head: true }).eq("author_id", user.id).eq("status", "cerrada"),
     supabase.from("causes").select("id", { count: "exact", head: true }).eq("author_id", user.id).eq("status", "finalizada"),
+    supabase.from("causes").select("id", { count: "exact", head: true }).eq("author_id", user.id).eq("status", "oculta"),
     supabase.from("causes").select("id").eq("author_id", user.id).eq("is_example", true).maybeSingle(),
-    supabase.from("profiles").select("id, full_name, public_id, avatar_url").eq("id", user.id).maybeSingle(),
+    supabase.from("profiles").select("id, full_name, public_id, avatar_url, identity_verified").eq("id", user.id).maybeSingle(),
   ]);
 
   const initialCounts: Record<CauseStatusTab, number> = {
@@ -30,6 +31,7 @@ export default async function MisCausasPage() {
     activa: activasRes.count || 0,
     cerrada: cerradasRes.count || 0,
     finalizada: finalizadasRes.count || 0,
+    oculta: ocultasRes.count || 0,
   };
 
   const { data: rawCauses } = await supabase
@@ -55,7 +57,10 @@ export default async function MisCausasPage() {
       collection_type,
       is_example,
       first_support_confirmed_at,
-      profiles:author_id(id, full_name, public_id, avatar_url),
+      holder_match,
+      holder_checked_at,
+      hidden_reason,
+      profiles:author_id(id, full_name, public_id, avatar_url, identity_verified),
       cause_media(id, storage_path, kind, position, width, height),
       cause_results(summary, amount_received),
       cause_supplies(id, name, unit, quantity_needed, quantity_received, position)
@@ -106,11 +111,15 @@ export default async function MisCausasPage() {
       is_example: c.is_example,
       first_support_confirmed_at: c.first_support_confirmed_at,
       supplies: suppliesList,
+      holder_match: c.holder_match,
+      holder_checked_at: c.holder_checked_at,
+      hidden_reason: c.hidden_reason,
       author: {
         id: c.profiles?.id || user.id,
         full_name: c.profiles?.full_name || profile?.full_name || "Mi perfil",
         public_id: c.profiles?.public_id || profile?.public_id || "",
         avatar_url: c.profiles?.avatar_url || profile?.avatar_url,
+        identity_verified: Boolean(c.profiles?.identity_verified ?? profile?.identity_verified),
       },
       media,
       resultsSummary: results?.summary || null,
