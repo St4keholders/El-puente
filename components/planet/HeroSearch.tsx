@@ -221,7 +221,7 @@ export function HeroSearch({ onSelectCountry, onNavigateToUser, activeCountryCou
     <div ref={containerRef} className="relative w-full max-w-[600px] pointer-events-auto">
       <Glass
         variant="pill"
-        className="flex h-14 items-center gap-3 px-4 shadow-lg border border-[var(--line)] bg-[var(--glass-tint-strong)] backdrop-blur-md focus-within:border-[var(--accent)] focus-within:ring-4 focus-within:ring-[var(--focus-ring)] transition-all"
+        className="flex h-12 sm:h-14 items-center gap-3 px-4 shadow-lg border border-[var(--line)] bg-[var(--glass-tint-strong)] backdrop-blur-md focus-within:border-[var(--accent)] focus-within:ring-4 focus-within:ring-[var(--focus-ring)] transition-all"
       >
         <IconoBuscar size={20} className="text-[var(--ink-2)] flex-shrink-0" />
         <input
@@ -243,7 +243,7 @@ export function HeroSearch({ onSelectCountry, onNavigateToUser, activeCountryCou
           role="combobox"
           aria-expanded={isOpen}
           aria-autocomplete="list"
-          className="flex-1 bg-transparent text-[var(--ink)] placeholder-[var(--ink-2)] text-base outline-none [appearance:none] [&::-webkit-search-cancel-button]:hidden font-medium"
+          className="flex-1 min-w-0 bg-transparent text-[var(--ink)] placeholder-[var(--ink-2)] text-base outline-none placeholder:text-ellipsis [appearance:none] [&::-webkit-search-cancel-button]:hidden font-medium"
         />
         {query ? (
           <button

@@ -35,9 +35,9 @@ export function RecentActivity({
   };
 
   return (
-    <div className="fixed bottom-6 left-0 right-0 z-30 flex flex-col sm:flex-row items-start sm:items-end justify-between gap-4 px-6 md:px-10 pointer-events-none">
+    <div className="fixed bottom-[calc(6rem+env(safe-area-inset-bottom))] md:bottom-6 left-0 right-0 z-30 flex flex-col sm:flex-row items-center sm:items-end justify-between gap-2 sm:gap-4 px-4 sm:px-6 md:px-10 pointer-events-none">
       {/* Contador de estado en vivo */}
-      <div className="flex items-center gap-2.5 rounded-full border border-[var(--line)] bg-[var(--surface)] px-4 py-2 text-sm text-[var(--ink-2)] shadow-md pointer-events-auto backdrop-blur-md">
+      <div className="flex items-center gap-2.5 rounded-full border border-[var(--line)] bg-[var(--surface)] px-3.5 py-1.5 sm:px-4 sm:py-2 text-[13px] sm:text-sm text-[var(--ink-2)] shadow-md pointer-events-auto backdrop-blur-md whitespace-nowrap">
         <span className="relative flex h-2.5 w-2.5">
           <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-[var(--accent)] opacity-75" />
           <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-[var(--accent)]" />
@@ -64,7 +64,7 @@ export function RecentActivity({
 
       {/* Feed de eventos recientes */}
       {events.length > 0 && (
-        <ol className="flex flex-col gap-1.5 w-full sm:w-auto max-w-[320px] pointer-events-auto" aria-label="Actividad reciente">
+        <ol className="flex flex-col gap-1.5 w-full sm:w-auto max-w-[320px] pointer-events-auto max-md:[@media(max-height:760px)]:hidden" aria-label="Actividad reciente">
           {events.slice(0, 3).map((ev, i) => {
             const isGift = ev.kind === "causa_finalizada";
             const actionText =

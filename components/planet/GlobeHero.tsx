@@ -563,12 +563,25 @@ export function GlobeHero({ initialCounts, initialEvents }: GlobeHeroProps) {
           const introBottom = searchEl
             ? searchEl.getBoundingClientRect().bottom - containerRef.current.getBoundingClientRect().top
             : mobile ? 220 : 180;
-          const bottomEl = document.getElementById("hero-bottom-stats");
-          const bottomReserve = mobile ? (bottomEl?.offsetHeight || 60) + 20 : 36;
+          // En móvil hay que dejar libre la barra inferior fija y las estadísticas.
+          const navEl = document.querySelector("[data-bottom-nav]") as HTMLElement | null;
+          const navTop = mobile && navEl ? navEl.getBoundingClientRect().top - containerRef.current.getBoundingClientRect().top : h;
+          const bottomReserve = mobile ? Math.max(0, h - navTop) + 56 : 36;
           const avail = h - bottomReserve - introBottom;
-          let d = Math.min(w * (mobile ? 0.96 : 0.9), avail / 0.93, 880);
-          d = Math.max(d, 240);
-          const cy = introBottom + d / 2 - d * 0.07 + Math.max(0, (avail - d * 0.93) / 2);
+
+          let d: number;
+          let cy: number;
+          // Pantallas bajas: si la esfera tendría que encogerse por debajo del ancho,
+          // se muestra como un horizonte (la mitad superior saliendo desde abajo).
+          const horizonte = mobile && avail / 0.93 < w * 0.9;
+          if (horizonte) {
+            d = Math.min(w * 1.05, 560);
+            cy = introBottom + 18 + d / 2;
+          } else {
+            d = Math.min(w * (mobile ? 0.96 : 0.9), avail / 0.93, 880);
+            d = Math.max(d, 240);
+            cy = introBottom + d / 2 - d * 0.07 + Math.max(0, (avail - d * 0.93) / 2);
+          }
           const hc = Math.max(2 * cy, 2 * (h - cy), d * 1.3) + (mobile ? 160 : 0);
 
           if (stageRef.current) {
@@ -678,7 +691,7 @@ export function GlobeHero({ initialCounts, initialEvents }: GlobeHeroProps) {
   return (
     <div
       ref={containerRef}
-      className="relative h-[100svh] min-h-[620px] w-full overflow-hidden bg-[var(--bg)] select-none"
+      className="relative h-[100svh] min-h-[500px] md:min-h-[620px] w-full overflow-hidden bg-[var(--bg)] select-none"
     >
       {/* Canvas cielo estrellado */}
       <canvas ref={starCanvasRef} className="absolute inset-0 pointer-events-none z-0" aria-hidden="true" />
@@ -731,18 +744,18 @@ export function GlobeHero({ initialCounts, initialEvents }: GlobeHeroProps) {
 
       {/* Titular y Buscador centrado (Sección 1.3: una sola línea desde 1024px) */}
       <div
-        className={`absolute left-0 right-0 top-20 sm:top-24 z-20 flex flex-col items-center px-4 text-center pointer-events-none transition-all duration-300 ${
+        className={`absolute left-0 right-0 top-[84px] sm:top-24 z-20 flex flex-col items-center px-4 text-center pointer-events-none transition-all duration-300 ${
           selectedCountry ? "opacity-0 pointer-events-none scale-95 md:scale-100" : "opacity-100"
         }`}
       >
-        <h1 className="w-full text-center font-extrabold tracking-tight text-[var(--ink)] leading-[1.08] [text-wrap:balance] lg:[text-wrap:nowrap] text-[clamp(2.25rem,3.4vw,3.6rem)]">
+        <h1 className="w-full text-center font-extrabold tracking-tight text-[var(--ink)] leading-[1.08] [text-wrap:balance] lg:[text-wrap:nowrap] text-[clamp(1.45rem,7.2vw,2.25rem)] sm:text-[clamp(2.25rem,3.4vw,3.6rem)]">
           Cada luz es una persona que necesita ayuda.
         </h1>
-        <h2 className="mt-3 text-center text-sm sm:text-base text-[var(--ink-2)] font-medium [text-wrap:balance] lg:[text-wrap:nowrap] lg:whitespace-nowrap max-w-[52ch] lg:max-w-none">
+        <h2 className="mt-2 sm:mt-3 text-center text-[0.9rem] leading-snug sm:text-base max-sm:line-clamp-2 [@media(max-height:600px)]:hidden text-[var(--ink-2)] font-medium [text-wrap:balance] lg:[text-wrap:nowrap] lg:whitespace-nowrap max-w-[52ch] lg:max-w-none">
           Gira el planeta y toca un país para conocer a quién puedes apoyar ahí, sin intermediarios.
         </h2>
 
-        <div ref={searchWrapperRef} className="mt-6 w-full flex justify-center">
+        <div ref={searchWrapperRef} className="mt-4 sm:mt-6 w-full flex justify-center">
           <HeroSearch
             onSelectCountry={(cCode, opts) => selectCountry(cCode, opts)}
             activeCountryCounts={countryCounts}
