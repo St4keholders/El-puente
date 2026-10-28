@@ -1,51 +1,32 @@
-# El Puente - Red Social de Ayuda Directa
-Plataforma comunitaria construida con Next.js y Supabase.
+# Puente
 
+Red comunitaria de ayuda directa: cada persona publica su causa y recibe el apoyo en sus propios medios. Puente no procesa pagos, no retiene fondos y no cobra comisiones.
 
-First, run the development server:
+Sitio: https://www.elpuentesh.org
+
+## Tecnología
+
+- Next.js 16 (App Router), desplegado en Vercel desde la rama `main`.
+- Supabase: base de datos, autenticación con Google y almacenamiento de archivos. Las migraciones están en `supabase/migrations/`.
+- Didit: verificación de identidad (documento, prueba de vida y coincidencia facial).
+
+## Variables de entorno
+
+Van en `.env.local` para trabajar en local y en Vercel (Production y Preview). Nunca se suben al repositorio.
+
+| Variable | Tipo | Para qué |
+|---|---|---|
+| `NEXT_PUBLIC_SUPABASE_URL` | Pública | URL del proyecto de Supabase |
+| `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY` | Pública | Clave pública de Supabase |
+| `NEXT_PUBLIC_SITE_URL` | Pública | Dominio del sitio |
+| `SUPABASE_SECRET_KEY` | **Secreta** | Escrituras del servidor que saltan RLS (webhook de Didit, eliminar cuenta) |
+| `DIDIT_API_KEY` | **Secreta** | Crear y consultar sesiones de verificación |
+| `DIDIT_WEBHOOK_SECRET` | **Secreta** | Verificar la firma de los avisos de Didit |
+| `VERIFICATION_PEPPER` | **Secreta** | Convertir el número de documento en una huella irreversible. No se cambia nunca |
+
+## Desarrollo
 
 ```bash
+npm install
 npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
 ```
-
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
-
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
-
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
-
-## Learn More
-
-To learn more about Next.js, take a look at the following resources:
-
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
-
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
-
-## Deploy on Vercel
-
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
-
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
-
-## Datos de prueba (Seed)
-
-Para poblar la base de datos con causas y perfiles de prueba coherentes:
-```bash
-# Ejecutar scripts/seed.sql mediante el cliente de base de datos o el MCP de Supabase
-```
-
-Para borrar todos los datos de prueba sin afectar usuarios reales:
-```sql
-DELETE FROM public.causes WHERE is_seed = true;
-DELETE FROM public.profiles WHERE is_seed = true;
-DELETE FROM auth.users WHERE email LIKE '%@elpuente.test';
-```
-
