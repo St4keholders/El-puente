@@ -3,6 +3,7 @@
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { diditProvider } from "@/lib/identity/didit";
+import { sincronizarSesionDidit } from "@/lib/identity/sync";
 
 export async function iniciarVerificacionAction() {
   const supabase = await createClient();
@@ -41,7 +42,7 @@ export async function iniciarVerificacionAction() {
 
     // Guardar fila inicial en pendiente
     const admin = createAdminClient();
-    await admin.from("identity_verifications").upsert(
+    const { error: upsertErr } = await admin.from("identity_verifications").upsert(
       {
         user_id: user.id,
         provider: "didit",
@@ -52,6 +53,18 @@ export async function iniciarVerificacionAction() {
       },
       { onConflict: "provider_session_id" }
     );
+
+    if (upsertErr) {
+      console.error(
+        "[iniciarVerificacionAction] No se pudo guardar la verificación pendiente:",
+        upsertErr.code,
+        upsertErr.message
+      );
+      return {
+        success: false,
+        error: "No pudimos iniciar la verificación. Inténtalo de nuevo en unos minutos.",
+      };
+    }
 
     return { success: true, url: sesion.url, sessionId: sesion.sessionId };
   } catch (err: any) {
@@ -73,13 +86,43 @@ export async function consultarEstadoVerificacionAction() {
     return { success: false, error: "SIN_SESION" };
   }
 
-  const { data: verif } = await supabase
-    .from("identity_verifications")
-    .select("status, verified_at, expires_at, decline_reason")
-    .eq("user_id", user.id)
-    .order("created_at", { ascending: false })
-    .limit(1)
-    .maybeSingle();
+  const leerUltima = () =>
+    supabase
+      .from("identity_verifications")
+      .select("status, verified_at, expires_at, decline_reason, provider_session_id")
+      .eq("user_id", user.id)
+      .order("created_at", { ascending: false })
+      .limit(1)
+      .maybeSingle();
+
+  const primera = await leerUltima();
+  let verif = primera.data;
+  const verifErr = primera.error;
+  if (verifErr) {
+    console.error("[consultarEstadoVerificacionAction]", verifErr.code, verifErr.message);
+  }
+
+  // Plan B: si seguimos en "pendiente" (o la fila nunca se guardó), nuestro servidor
+  // le pregunta a Didit directamente. No depende del webhook ni del navegador.
+  let sesionPorRevisar = verif?.status === "pendiente" ? verif.provider_session_id : null;
+  if (!verif) {
+    try {
+      sesionPorRevisar = await diditProvider.buscarUltimaSesion(user.id);
+    } catch (err) {
+      console.error("[consultarEstadoVerificacionAction] No se pudo buscar en Didit:", err);
+    }
+  }
+
+  if (sesionPorRevisar) {
+    const sync = await sincronizarSesionDidit(sesionPorRevisar, {
+      userIdEsperado: user.id,
+    });
+    if (sync.ok && sync.guardado) {
+      ({ data: verif } = await leerUltima());
+    } else if (!sync.ok) {
+      console.error("[consultarEstadoVerificacionAction] Plan B falló:", sync.error);
+    }
+  }
 
   const { data: profile } = await supabase
     .from("profiles")
@@ -89,7 +132,14 @@ export async function consultarEstadoVerificacionAction() {
 
   return {
     success: true,
-    verification: verif || null,
+    verification: verif
+      ? {
+          status: verif.status,
+          verified_at: verif.verified_at,
+          expires_at: verif.expires_at,
+          decline_reason: verif.decline_reason,
+        }
+      : null,
     profileVerified: Boolean(profile?.identity_verified),
     verifiedAt: profile?.identity_verified_at || null,
   };
