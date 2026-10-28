@@ -71,13 +71,24 @@ export const Glass: React.FC<GlassProps> = ({
     card: "rounded-2xl p-4",
   };
 
+  // Lo que pasa quien usa el componente manda sobre los valores por defecto.
+  // Antes "relative" pisaba a "absolute", el padding de la variante pisaba a "p-0"/"p-2"
+  // y el fondo traslúcido en línea pisaba a "bg-…", así que los desplegables y paneles
+  // quedaban fuera de lugar y transparentes.
+  const tienePosicion = /(^|\s)(absolute|fixed|sticky)(\s|$)/.test(className);
+  const tienePadding = /(^|\s)(p|px|py|pt|pb|pl|pr)-/.test(className);
+  const tieneFondo = /(^|\s)bg-/.test(className);
+  const variantClass = tienePadding
+    ? variantStyles[variant].replace(/(^|\s)(p|px|py)-\S+/g, "")
+    : variantStyles[variant];
+
   return (
     <Component
       ref={ref}
       onPointerMove={interactive ? handlePointerMove : undefined}
-      className={`glass-container relative overflow-hidden backdrop-blur-[var(--glass-blur)] backdrop-saturate-[var(--glass-saturate)] ${variantStyles[variant]} ${className}`}
+      className={`glass-container ${tienePosicion ? "" : "relative"} overflow-hidden backdrop-blur-[var(--glass-blur)] backdrop-saturate-[var(--glass-saturate)] ${variantClass} ${className}`}
       style={{
-        backgroundColor: "var(--glass-tint)",
+        ...(tieneFondo ? {} : { backgroundColor: "var(--glass-tint)" }),
         boxShadow: "var(--glass-shadow)",
         border: "1px solid var(--glass-edge)",
         transition: "transform 220ms cubic-bezier(0.34, 1.56, 0.64, 1), box-shadow 0.2s ease",

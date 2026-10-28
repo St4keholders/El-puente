@@ -2,6 +2,7 @@
 
 import React, { useEffect, useState, useCallback } from "react";
 import Link from "next/link";
+import { createPortal } from "react-dom";
 import { IconoCerrar, IconoCorazon, IconoFlechaDerecha } from "@/components/iconos";
 import { Glass } from "@/components/ui/Glass";
 import { getCountryCausesAction } from "@/app/actions/planet";
@@ -32,6 +33,10 @@ export function CountryPanel({
   const [loading, setLoading] = useState(false);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [totalCount, setTotalCount] = useState(0);
+  // Se monta en <body> para quedar por encima de la barra inferior fija en móvil
+  // (dentro del hero quedaba atrapado en su capa y la barra lo tapaba).
+  const [montado, setMontado] = useState(false);
+  useEffect(() => setMontado(true), []);
 
   const fetchCountryCauses = useCallback(async () => {
     if (!countryCode) return;
@@ -63,20 +68,17 @@ export function CountryPanel({
     fetchCountryCauses();
   }, [fetchCountryCauses]);
 
-  if (!countryCode) return null;
+  if (!countryCode || !montado) return null;
 
   const nf = new Intl.NumberFormat("es-CO");
   const fmt = (n: number) => nf.format(Math.round(n));
   const money = (n: number) => `US$ ${fmt(n)}`;
 
-  return (
+
+  return createPortal(
     <aside
       aria-labelledby="panelTitle"
-      className="fixed z-50 flex flex-col transition-all duration-500 ease-out
-        /* Desktop */
-        md:top-20 md:right-6 md:bottom-6 md:w-[400px] md:max-h-[calc(100vh-7rem)]
-        /* Mobile */
-        bottom-0 left-0 right-0 max-h-[75svh] w-full rounded-t-3xl md:rounded-3xl"
+      className="fixed z-[60] flex flex-col transition-all duration-500 ease-out md:top-20 md:right-6 md:bottom-6 md:left-auto md:w-[400px] md:max-h-[calc(100vh-7rem)] bottom-0 left-0 right-0 h-[58svh] md:h-auto w-full rounded-t-3xl md:rounded-3xl overflow-hidden"
     >
       <Glass
         variant="panel"
@@ -251,6 +253,7 @@ export function CountryPanel({
           </div>
         )}
       </Glass>
-    </aside>
+    </aside>,
+    document.body
   );
 }
