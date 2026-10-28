@@ -267,9 +267,19 @@ export function GlobeHero({ initialCounts, initialEvents }: GlobeHeroProps) {
     if (w > 720) {
       stageRef.current.style.transform = "translateX(-216px)";
     } else {
-      const target = (containerRef.current.clientHeight - 400) / 2 + 8;
+      // El planeta se centra en el espacio libre entre el header y la hoja del país (58svh).
+      const h = containerRef.current.clientHeight;
+      const hoja = Math.min(h * 0.58, 560);
+      const target = (80 + (h - hoja)) / 2;
       stageRef.current.style.transform = `translateY(${target - stateRef.current.cy}px)`;
     }
+  }, []);
+
+  // Vista previa desde el buscador: gira hacia el lugar sin abrir el panel
+  const previewTo = useCallback((lat: number, lng: number) => {
+    if (!globeInstance.current || stateRef.current.selected) return;
+    globeInstance.current.controls().autoRotate = false;
+    globeInstance.current.pointOfView({ lat, lng, altitude: stateRef.current.homeAlt }, 900);
   }, []);
 
   // Select country action
@@ -566,17 +576,19 @@ export function GlobeHero({ initialCounts, initialEvents }: GlobeHeroProps) {
           // En móvil hay que dejar libre la barra inferior fija y las estadísticas.
           const navEl = document.querySelector("[data-bottom-nav]") as HTMLElement | null;
           const navTop = mobile && navEl ? navEl.getBoundingClientRect().top - containerRef.current.getBoundingClientRect().top : h;
-          const bottomReserve = mobile ? Math.max(0, h - navTop) + 56 : 36;
+          const bottomReserve = mobile ? Math.max(0, h - navTop) + 52 : 36;
           const avail = h - bottomReserve - introBottom;
 
           let d: number;
           let cy: number;
-          // Pantallas bajas: si la esfera tendría que encogerse por debajo del ancho,
-          // se muestra como un horizonte (la mitad superior saliendo desde abajo).
-          const horizonte = mobile && avail / 0.93 < w * 0.9;
-          if (horizonte) {
-            d = Math.min(w * 1.05, 560);
-            cy = introBottom + 18 + d / 2;
+          if (mobile) {
+            // Móvil: la esfera completa siempre cabe entre el buscador y las estadísticas,
+            // con margen para girarla sin tocar otros controles. En pantallas más
+            // pequeñas el planeta es más pequeño, nunca se corta.
+            const top = introBottom + 14;
+            const espacio = Math.max(0, avail - 14);
+            d = Math.max(150, Math.min(w * 0.86, espacio * 0.9));
+            cy = top + espacio / 2;
           } else {
             d = Math.min(w * (mobile ? 0.96 : 0.9), avail / 0.93, 880);
             d = Math.max(d, 240);
@@ -691,7 +703,7 @@ export function GlobeHero({ initialCounts, initialEvents }: GlobeHeroProps) {
   return (
     <div
       ref={containerRef}
-      className="relative h-[100svh] min-h-[500px] md:min-h-[620px] w-full overflow-hidden bg-[var(--bg)] select-none"
+      className="relative h-[100dvh] min-h-[460px] md:h-[100svh] md:min-h-[620px] w-full overflow-hidden overscroll-none bg-[var(--bg)] select-none"
     >
       {/* Canvas cielo estrellado */}
       <canvas ref={starCanvasRef} className="absolute inset-0 pointer-events-none z-0" aria-hidden="true" />
@@ -729,7 +741,7 @@ export function GlobeHero({ initialCounts, initialEvents }: GlobeHeroProps) {
         {/* Contenedor WebGL */}
         <div
           ref={globeRef}
-          className={`absolute inset-0 transition-opacity duration-1000 pointer-events-auto cursor-grab active:cursor-grabbing ${
+          className={`absolute inset-0 touch-none transition-opacity duration-1000 pointer-events-auto cursor-grab active:cursor-grabbing ${
             isGlobeReady ? "opacity-100" : "opacity-0"
           }`}
           aria-label="Planeta interactivo en 3D. Gira y toca un país para explorar sus causas."
@@ -748,16 +760,17 @@ export function GlobeHero({ initialCounts, initialEvents }: GlobeHeroProps) {
           selectedCountry ? "opacity-0 pointer-events-none scale-95 md:scale-100" : "opacity-100"
         }`}
       >
-        <h1 className="w-full text-center font-extrabold tracking-tight text-[var(--ink)] leading-[1.08] [text-wrap:balance] lg:[text-wrap:nowrap] text-[clamp(1.45rem,7.2vw,2.25rem)] sm:text-[clamp(2.25rem,3.4vw,3.6rem)]">
+        <h1 className="w-full text-center font-extrabold tracking-tight text-[var(--ink)] leading-[1.08] [text-wrap:balance] lg:[text-wrap:nowrap] text-[clamp(1.4rem,6.8vw,2.1rem)] max-md:[@media(max-height:700px)]:text-[1.35rem] sm:text-[clamp(2.25rem,3.4vw,3.6rem)]">
           Cada luz es una persona que necesita ayuda.
         </h1>
-        <h2 className="mt-2 sm:mt-3 text-center text-[0.9rem] leading-snug sm:text-base max-sm:line-clamp-2 [@media(max-height:600px)]:hidden text-[var(--ink-2)] font-medium [text-wrap:balance] lg:[text-wrap:nowrap] lg:whitespace-nowrap max-w-[52ch] lg:max-w-none">
+        <h2 className="mt-2 sm:mt-3 text-center text-[0.9rem] leading-snug sm:text-base max-sm:line-clamp-2 max-md:[@media(max-height:760px)]:hidden text-[var(--ink-2)] font-medium [text-wrap:balance] lg:[text-wrap:nowrap] lg:whitespace-nowrap max-w-[52ch] lg:max-w-none">
           Gira el planeta y toca un país para conocer a quién puedes apoyar ahí, sin intermediarios.
         </h2>
 
         <div ref={searchWrapperRef} className="mt-4 sm:mt-6 w-full flex justify-center">
           <HeroSearch
             onSelectCountry={(cCode, opts) => selectCountry(cCode, opts)}
+            onPreview={previewTo}
             activeCountryCounts={countryCounts}
           />
         </div>

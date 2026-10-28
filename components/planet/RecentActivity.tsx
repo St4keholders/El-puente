@@ -64,7 +64,7 @@ export function RecentActivity({
 
       {/* Feed de eventos recientes */}
       {events.length > 0 && (
-        <ol className="flex flex-col gap-1.5 w-full sm:w-auto max-w-[320px] pointer-events-auto max-md:[@media(max-height:760px)]:hidden" aria-label="Actividad reciente">
+        <ol className="flex flex-col gap-1.5 w-full sm:w-auto max-w-[320px] pointer-events-auto max-md:hidden" aria-label="Actividad reciente">
           {events.slice(0, 3).map((ev, i) => {
             const isGift = ev.kind === "causa_finalizada";
             const actionText =

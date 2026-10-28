@@ -5,6 +5,7 @@ import { IconoBuscar, IconoCerrar, IconoGlobo, IconoMarcador, IconoUsuario, Icon
 import { Glass } from "@/components/ui/Glass";
 import mundoData from "@/lib/geo/mundo.json";
 import { createClient } from "@/lib/supabase/client";
+import { defaultGeocoder } from "@/lib/geo/geocoder";
 
 interface SearchItem {
   type: "country" | "city" | "person" | "cause";
@@ -21,13 +22,18 @@ interface SearchItem {
 interface HeroSearchProps {
   onSelectCountry: (countryCode: string, opts?: { lat?: number; lng?: number; focusCauseId?: string; nearCity?: string }) => void;
   onNavigateToUser?: (publicId: string) => void;
+  /** Mientras se escribe: gira el planeta hacia el primer resultado, sin abrir el panel. */
+  onPreview?: (lat: number, lng: number) => void;
   activeCountryCounts: Map<string, number>;
 }
 
-export function HeroSearch({ onSelectCountry, onNavigateToUser, activeCountryCounts }: HeroSearchProps) {
+export function HeroSearch({ onSelectCountry, onNavigateToUser, onPreview, activeCountryCounts }: HeroSearchProps) {
   const [query, setQuery] = useState("");
   const [isOpen, setIsOpen] = useState(false);
   const [remoteResults, setRemoteResults] = useState<SearchItem[]>([]);
+  // Ciudades de cualquier tamaño (Medellín, pueblos…) desde el geocodificador
+  const [geoResults, setGeoResults] = useState<SearchItem[]>([]);
+  const [buscando, setBuscando] = useState(false);
   const [activeIndex, setActiveIndex] = useState(-1);
   const inputRef = useRef<HTMLInputElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
@@ -146,10 +152,73 @@ export function HeroSearch({ onSelectCountry, onNavigateToUser, activeCountryCou
     return () => clearTimeout(timer);
   }, [query]);
 
-  // Combined results
+  // Ciudades desde el geocodificador (Photon / MapTiler), con 300 ms de espera
+  useEffect(() => {
+    const q = query.trim();
+    if (q.length < 3) {
+      setGeoResults([]);
+      setBuscando(false);
+      return;
+    }
+    setBuscando(true);
+    let cancelado = false;
+    const timer = setTimeout(async () => {
+      try {
+        const { cities } = await defaultGeocoder.searchCities(q);
+        if (cancelado) return;
+        const countries = (mundoData as any).countries || [];
+        setGeoResults(
+          cities
+            .filter((c) => countries.some((x: any) => x.id === c.countryCode))
+            .slice(0, 5)
+            .map((c) => ({
+              type: "city" as const,
+              id: `geo-${c.name}-${c.countryCode}-${c.lat}`,
+              label: c.name,
+              sublabel: [c.region, countries.find((x: any) => x.id === c.countryCode)?.n]
+                .filter(Boolean)
+                .join(", "),
+              countryCode: c.countryCode,
+              lat: c.lat,
+              lng: c.lng,
+            }))
+        );
+      } catch (err) {
+        console.error("Error buscando ciudades:", err);
+        if (!cancelado) setGeoResults([]);
+      } finally {
+        if (!cancelado) setBuscando(false);
+      }
+    }, 300);
+    return () => {
+      cancelado = true;
+      clearTimeout(timer);
+    };
+  }, [query]);
+
+  // Combined results: países, ciudades (locales y del geocodificador sin repetir), personas y causas
   const allResults = useMemo(() => {
-    return [...filteredLocal, ...remoteResults];
-  }, [filteredLocal, remoteResults]);
+    const vistos = new Set(
+      filteredLocal.filter((i) => i.type === "city").map((i) => `${norm(i.label)}|${i.countryCode}`)
+    );
+    const geoNuevas = geoResults.filter((g) => {
+      const k = `${norm(g.label)}|${g.countryCode}`;
+      if (vistos.has(k)) return false;
+      vistos.add(k);
+      return true;
+    });
+    const countries = filteredLocal.filter((i) => i.type === "country");
+    const cities = [...filteredLocal.filter((i) => i.type === "city"), ...geoNuevas].slice(0, 5);
+    return [...countries, ...cities, ...remoteResults];
+  }, [filteredLocal, geoResults, remoteResults]);
+
+  // Vista previa: el planeta gira hacia el primer resultado mientras se escribe
+  const primero = allResults.find((r) => typeof r.lat === "number" && typeof r.lng === "number");
+  useEffect(() => {
+    if (!onPreview || !isOpen || !primero || query.trim().length < 3) return;
+    const t = setTimeout(() => onPreview(primero.lat!, primero.lng!), 450);
+    return () => clearTimeout(t);
+  }, [primero?.id, isOpen]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Global keydown shortcut '/' to focus
   useEffect(() => {
@@ -210,6 +279,8 @@ export function HeroSearch({ onSelectCountry, onNavigateToUser, activeCountryCou
       e.preventDefault();
       if (activeIndex >= 0 && activeIndex < allResults.length) {
         handleSelect(allResults[activeIndex]);
+      } else if (allResults.length > 0) {
+        handleSelect(allResults[0]);
       }
     } else if (e.key === "Escape") {
       setIsOpen(false);
@@ -238,6 +309,7 @@ export function HeroSearch({ onSelectCountry, onNavigateToUser, activeCountryCou
           }}
           onKeyDown={handleKeyDown}
           placeholder="Busca un país, ciudad o persona"
+          enterKeyHint="search"
           autoComplete="off"
           spellCheck="false"
           role="combobox"
@@ -266,14 +338,19 @@ export function HeroSearch({ onSelectCountry, onNavigateToUser, activeCountryCou
 
       {/* Resultados desplegables */}
       {isOpen && query.trim().length > 0 && (
-        <Glass
-          variant="panel"
-          className="absolute left-0 right-0 top-full mt-2 z-50 max-h-[420px] overflow-y-auto p-2 shadow-2xl border border-[var(--line)] bg-[var(--surface-solid)]"
+        <div
+          className="absolute left-0 right-0 top-full mt-2 z-50 max-h-[min(420px,45dvh)] overflow-y-auto overscroll-contain rounded-2xl p-1.5 shadow-2xl border border-[var(--line)] bg-[var(--surface-solid)]"
           role="listbox"
         >
           {allResults.length === 0 ? (
             <div className="p-4 text-center text-sm text-[var(--ink-2)]">
-              No encontramos nada para “<strong>{query}</strong>”. Prueba con el nombre de un país, una ciudad o una persona.
+              {buscando ? (
+                "Buscando…"
+              ) : (
+                <>
+                  No encontramos nada para “<strong>{query}</strong>”. Prueba con el nombre de un país, una ciudad o una persona.
+                </>
+              )}
             </div>
           ) : (
             <div className="space-y-1">
@@ -293,7 +370,7 @@ export function HeroSearch({ onSelectCountry, onNavigateToUser, activeCountryCou
                     aria-selected={isSelected}
                     onClick={() => handleSelect(item)}
                     onMouseEnter={() => setActiveIndex(idx)}
-                    className={`flex items-center justify-between gap-3 px-3.5 py-2.5 rounded-xl cursor-pointer transition-colors ${
+                    className={`flex items-center justify-between gap-3 px-3 py-3 rounded-xl cursor-pointer transition-colors ${
                       isSelected ? "bg-[var(--hover)]" : "hover:bg-[var(--hover)]"
                     }`}
                   >
@@ -323,7 +400,7 @@ export function HeroSearch({ onSelectCountry, onNavigateToUser, activeCountryCou
               })}
             </div>
           )}
-        </Glass>
+        </div>
       )}
     </div>
   );

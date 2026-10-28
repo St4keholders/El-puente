@@ -1,10 +1,15 @@
+"use client";
+
 import React from "react";
 import Link from "next/link";
-
+import { usePathname } from "next/navigation";
 
 export function Footer() {
+  // En la portada en celular, el planeta ocupa toda la pantalla: sin pie de página
+  // la página no se desplaza y arrastrar el planeta no mueve la página.
+  const enPortada = usePathname() === "/";
   return (
-    <footer className="mt-auto border-t border-glass-tint/40 py-10 px-4 text-xs text-text-secondary">
+    <footer className={`${enPortada ? "hidden md:block" : ""} mt-auto border-t border-glass-tint/40 py-10 px-4 text-xs text-text-secondary`}>
       <div className="max-w-6xl mx-auto flex flex-col md:flex-row items-center justify-between gap-6">
         <div className="flex flex-col items-center md:items-start gap-1">
           <div className="flex items-center gap-2">
