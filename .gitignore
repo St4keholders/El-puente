@@ -43,3 +43,8 @@ next-env.d.ts
 
 # planning
 PLAN*.md
+
+# documentos internos de trabajo (planes y ajustes para agentes)
+/docs-internos/
+AJUSTES*.md
+VERIFICACION*.md

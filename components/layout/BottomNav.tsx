@@ -22,7 +22,10 @@ export function BottomNav() {
   ];
 
   return (
-    <div className="fixed bottom-4 left-0 right-0 z-50 flex justify-center px-4 md:hidden pointer-events-none">
+    <div
+      data-bottom-nav
+      className="fixed bottom-[max(1rem,env(safe-area-inset-bottom))] left-0 right-0 z-50 flex justify-center px-4 md:hidden pointer-events-none"
+    >
       <Glass
         variant="bar"
         className="pointer-events-auto flex w-full max-w-md items-center justify-around py-2 px-2 shadow-2xl"
@@ -49,7 +52,7 @@ export function BottomNav() {
               key={link.href}
               href={link.href}
               aria-current={isActive ? "page" : undefined}
-              className={`relative flex flex-col items-center gap-0.5 px-3 py-1 rounded-xl transition-colors ${
+              className={`relative flex flex-col items-center gap-0.5 px-3 max-[360px]:px-1.5 py-1 rounded-xl transition-colors ${
                 isActive
                   ? "text-[var(--accent-ink)] font-semibold"
                   : "text-[var(--ink-2)] hover:text-[var(--ink)]"
@@ -64,7 +67,7 @@ export function BottomNav() {
                   />
                 )}
               </div>
-              <span className="text-[11px]">{link.label}</span>
+              <span className="text-[11px] max-[360px]:text-[10px]">{link.label}</span>
             </Link>
           );
         })}

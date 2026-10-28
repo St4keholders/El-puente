@@ -216,6 +216,13 @@ export function ResultadoClient({ nextUrl }: ResultadoClientProps) {
           <span>Continuar</span>
           <IconoFlechaDerecha size={16} />
         </Link>
+        <button
+          type="button"
+          onClick={() => window.location.reload()}
+          className="w-full py-3 px-6 rounded-2xl border border-[var(--line)] bg-[var(--hover)] text-[var(--ink-2)] hover:text-[var(--ink)] text-sm font-medium transition-all"
+        >
+          Volver a comprobar
+        </button>
         <Link
           href="/perfil"
           className="w-full py-3 px-6 rounded-2xl border border-[var(--line)] bg-[var(--hover)] text-[var(--ink-2)] hover:text-[var(--ink)] text-sm font-medium transition-all"

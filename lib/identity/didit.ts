@@ -74,6 +74,31 @@ function getHeaderValue(
   return undefined;
 }
 
+// Canonicalización de Didit para X-Signature-V2.
+function shortenFloats(v: unknown): unknown {
+  if (Array.isArray(v)) return v.map(shortenFloats);
+  if (v && typeof v === "object") {
+    return Object.fromEntries(
+      Object.entries(v as Record<string, unknown>).map(([k, x]) => [k, shortenFloats(x)])
+    );
+  }
+  if (typeof v === "number" && !Number.isInteger(v) && v % 1 === 0) return Math.trunc(v);
+  return v;
+}
+
+function sortKeys(v: unknown): unknown {
+  if (Array.isArray(v)) return v.map(sortKeys);
+  if (v && typeof v === "object") {
+    return Object.keys(v as object)
+      .sort()
+      .reduce<Record<string, unknown>>((acc, k) => {
+        acc[k] = sortKeys((v as Record<string, unknown>)[k]);
+        return acc;
+      }, {});
+  }
+  return v;
+}
+
 export class DiditProvider implements IdentityProvider {
   /**
    * Crea una sesión de verificación en Didit v3.
@@ -113,137 +138,110 @@ export class DiditProvider implements IdentityProvider {
   }
 
   /**
-   * Verifica la firma HMAC-SHA256 en tiempo constante usando el encabezado X-Signature-V2.
+   * Verifica X-Signature-V2 tal como lo documenta Didit: HMAC-SHA256 sobre el JSON
+   * canonicalizado (enteros sin decimales y claves ordenadas), no sobre el cuerpo crudo.
+   * La frescura se mide con el campo `timestamp` del cuerpo, que sí está firmado.
+   * Devuelve el cuerpo ya parseado si todo es válido; si no, null.
    */
   verificarFirma(
     cuerpoCrudo: string,
     cabeceras: Record<string, string | string[] | undefined> | Headers
-  ): boolean {
+  ): Record<string, unknown> | null {
     const secret = getWebhookSecret();
-    const signature =
-      getHeaderValue(cabeceras, "x-signature-v2") ||
-      getHeaderValue(cabeceras, "X-Signature-V2") ||
-      getHeaderValue(cabeceras, "x-signature");
+    const signature = getHeaderValue(cabeceras, "x-signature-v2") ?? "";
+    if (!signature) return null;
 
-    const previousSignature =
-      getHeaderValue(cabeceras, "x-signature-v2-previous") ||
-      getHeaderValue(cabeceras, "X-Signature-V2-Previous");
-
-    const timestampStr =
-      getHeaderValue(cabeceras, "x-timestamp") || getHeaderValue(cabeceras, "X-Timestamp");
-
-    if (!signature) {
-      return false;
+    let parsed: Record<string, unknown>;
+    try {
+      parsed = JSON.parse(cuerpoCrudo);
+    } catch {
+      return null;
     }
 
-    // Replay protection: verificar ventana de 5 minutos si viene timestamp
-    if (timestampStr) {
-      const ts = parseInt(timestampStr, 10);
-      if (!isNaN(ts)) {
-        const nowSec = Math.floor(Date.now() / 1000);
-        if (Math.abs(nowSec - ts) > 300) {
-          console.warn("[DiditProvider] Webhook timestamp fuera de ventana tolerada:", ts, nowSec);
-          return false;
-        }
-      }
+    const canonical = JSON.stringify(sortKeys(shortenFloats(parsed)));
+    const expected = crypto.createHmac("sha256", secret).update(canonical, "utf8").digest("hex");
+    if (signature.length !== expected.length) return null;
+    if (!crypto.timingSafeEqual(Buffer.from(expected), Buffer.from(signature))) return null;
+
+    const ts = Number(parsed.timestamp);
+    if (!ts || Math.abs(Date.now() / 1000 - ts) > 300) {
+      console.warn("[DiditProvider] Webhook fuera de la ventana de 5 minutos:", ts);
+      return null;
     }
 
-    // Calcular firma computada
-    const computedSignature = crypto
-      .createHmac("sha256", secret)
-      .update(cuerpoCrudo)
-      .digest("hex");
-
-    const checkSig = (targetSig: string): boolean => {
-      try {
-        const bufComputed = Buffer.from(computedSignature, "hex");
-        const bufTarget = Buffer.from(targetSig, "hex");
-        if (bufComputed.length !== bufTarget.length) {
-          return false;
-        }
-        return crypto.timingSafeEqual(bufComputed, bufTarget);
-      } catch {
-        return false;
-      }
-    };
-
-    if (checkSig(signature)) {
-      return true;
-    }
-
-    if (previousSignature && checkSig(previousSignature)) {
-      return true;
-    }
-
-    return false;
+    return parsed;
   }
 
   /**
-   * Lee el evento del webhook y recupera los datos de decisión si están listos.
+   * Busca la sesión más reciente de una persona en Didit (por vendor_data).
+   * Sirve para recuperar verificaciones cuya fila "pendiente" nunca llegó a guardarse.
    */
-  async leerEvento(cuerpoCrudo: string): Promise<ParsedVerificationEvent> {
-    const payload = JSON.parse(cuerpoCrudo);
-    const eventId = payload.event_id;
-    const sessionId = payload.session_id || payload.id;
-    const rawStatus = payload.status || "In Progress";
-    let normalizedStatus = normalizeDiditStatus(rawStatus);
-    const userId = payload.vendor_data || "";
+  async buscarUltimaSesion(userId: string): Promise<string | null> {
+    const res = await fetch(
+      `https://verification.didit.me/v3/sessions?vendor_data=${encodeURIComponent(userId)}`,
+      { method: "GET", headers: { "x-api-key": getApiKey() }, cache: "no-store" }
+    );
+    if (!res.ok) {
+      console.error("[DiditProvider] No se pudieron listar las sesiones:", res.status);
+      return null;
+    }
+    const body = await res.json();
+    const lista: Array<{ session_id?: string; vendor_data?: string; created_at?: string }> =
+      Array.isArray(body) ? body : body.results || body.data || body.sessions || [];
+    const propias = lista
+      .filter((x) => x.session_id && (!x.vendor_data || x.vendor_data === userId))
+      .sort((a, b) => String(b.created_at || "").localeCompare(String(a.created_at || "")));
+    return propias[0]?.session_id || null;
+  }
 
-    let verifiedFullName: string | undefined = undefined;
-    let documentCountry: string | undefined = undefined;
-    let documentNumber: string | undefined = undefined;
-    let declineReason: string | undefined = undefined;
+  /**
+   * Pregunta a Didit, con nuestra propia clave, cómo quedó una sesión.
+   * Es la fuente de datos tanto para el webhook como para el plan B al volver de Didit.
+   */
+  async obtenerDecision(sessionId: string): Promise<ParsedVerificationEvent> {
+    const res = await fetch(
+      `https://verification.didit.me/v3/session/${encodeURIComponent(sessionId)}/decision/`,
+      { method: "GET", headers: { "x-api-key": getApiKey() }, cache: "no-store" }
+    );
 
-    // Si viene la decisión o es un estado resolutivo, consultar /decision/
-    const apiKey = getApiKey();
-    try {
-      const decisionRes = await fetch(
-        `https://verification.didit.me/v3/session/${sessionId}/decision/`,
-        {
-          method: "GET",
-          headers: {
-            "x-api-key": apiKey,
-          },
-        }
-      );
+    if (!res.ok) {
+      const detalle = await res.text().catch(() => "");
+      throw new Error(`Didit respondió ${res.status} al consultar la sesión ${sessionId}: ${detalle.slice(0, 200)}`);
+    }
 
-      if (decisionRes.ok) {
-        const decisionData = await decisionRes.json();
-        const decisionStatus = decisionData.status || rawStatus;
-        normalizedStatus = normalizeDiditStatus(decisionStatus);
+    const d = await res.json();
+    const rawStatus: string = d.status || "In Progress";
 
-        const idVerification = Array.isArray(decisionData.id_verifications)
-          ? decisionData.id_verifications[0]
-          : undefined;
+    const idv = Array.isArray(d.id_verifications) ? d.id_verifications[0] : d.id_verification;
+    const verifiedFullName =
+      idv?.full_name ||
+      [idv?.first_name, idv?.last_name].filter(Boolean).join(" ") ||
+      undefined;
 
-        if (idVerification) {
-          verifiedFullName =
-            idVerification.full_name ||
-            [idVerification.first_name, idVerification.last_name].filter(Boolean).join(" ") ||
-            undefined;
-          documentCountry = idVerification.issuing_country || idVerification.country || undefined;
-          documentNumber = idVerification.document_number || undefined;
-          if (idVerification.status === "Declined" && Array.isArray(idVerification.warnings)) {
-            declineReason = idVerification.warnings.map((w: any) => w.message || w.feature).join(", ");
-          }
-        }
-
-        if (decisionData.decline_reason) {
-          declineReason = decisionData.decline_reason;
-        }
-      }
-    } catch (err) {
-      console.warn("[DiditProvider] No se pudo obtener la decisión extendida:", err);
+    let declineReason: string | undefined = d.decline_reason || undefined;
+    if (!declineReason && rawStatus === "Declined") {
+      const warnings = [
+        ...(idv?.warnings || []),
+        ...((Array.isArray(d.liveness_checks) && d.liveness_checks[0]?.warnings) || []),
+        ...((Array.isArray(d.face_matches) && d.face_matches[0]?.warnings) || []),
+      ];
+      declineReason =
+        warnings
+          .map((w: { short_description?: string; description?: string; risk?: string }) =>
+            w.short_description || w.description || w.risk
+          )
+          .filter(Boolean)
+          .join(", ") || undefined;
     }
 
     return {
-      eventId,
-      sessionId,
-      userId,
-      status: normalizedStatus,
+      sessionId: d.session_id || sessionId,
+      userId: d.vendor_data || "",
+      rawStatus,
+      status: normalizeDiditStatus(rawStatus),
       verifiedFullName,
-      documentCountry,
-      documentNumber,
+      documentCountry: idv?.issuing_state || idv?.issuing_country || idv?.country || undefined,
+      documentNumber: idv?.document_number || idv?.personal_number || undefined,
       declineReason,
     };
   }

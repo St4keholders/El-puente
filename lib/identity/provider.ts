@@ -18,6 +18,8 @@ export interface CreateSessionResult {
 export interface ParsedVerificationEvent {
   eventId?: string;
   sessionId: string;
+  /** Estado tal como lo escribe Didit ("Approved", "Declined", "In Review"…). */
+  rawStatus: string;
   userId: string;
   status: VerificationNormalizedStatus;
   verifiedFullName?: string;
@@ -31,6 +33,6 @@ export interface IdentityProvider {
   verificarFirma(
     cuerpoCrudo: string,
     cabeceras: Record<string, string | string[] | undefined> | Headers
-  ): boolean;
-  leerEvento(cuerpoCrudo: string): Promise<ParsedVerificationEvent>;
+  ): Record<string, unknown> | null;
+  obtenerDecision(sessionId: string): Promise<ParsedVerificationEvent>;
 }
