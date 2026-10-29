@@ -6,6 +6,7 @@ import { useUser } from "@/lib/hooks/useUser";
 import { Glass } from "@/components/ui/Glass";
 import { IconoCheckCirculo, IconoCerrar } from "@/components/iconos";
 import { createClient } from "@/lib/supabase/client";
+import { avisarNavegacion } from "@/components/layout/BarraNavegacion";
 
 const STORAGE_KEY = "puente:verificacion-recordatorio-visto";
 
@@ -111,6 +112,7 @@ export function RecordatorioVerificacionModal() {
 
   const irAVerificacion = () => {
     cerrarAviso();
+    avisarNavegacion();
     router.push("/verificacion");
   };
 

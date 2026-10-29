@@ -15,6 +15,8 @@ import {
   editCommentAction,
   subirFotoComentarioAction,
 } from "@/app/actions/comments";
+import { avisar } from "@/components/ui/Avisos";
+import { avisarNavegacion } from "@/components/layout/BarraNavegacion";
 
 const UNA_HORA_MS = 60 * 60 * 1000;
 const MAX_FOTOS = 2;
@@ -252,10 +254,12 @@ export function CommentsSection({
   const handleSubmitComment = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!currentUser) {
+      avisarNavegacion();
       router.push(loginHref);
       return;
     }
     if (!isOnboarded) {
+      avisarNavegacion();
       router.push("/bienvenida");
       return;
     }
@@ -333,7 +337,7 @@ export function CommentsSection({
 
       if (!res.success || !res.comment) {
         revert(res.error || "No pudimos publicar el comentario.");
-        if (res.redirect) router.push(res.redirect);
+        if (res.redirect) { avisarNavegacion(); router.push(res.redirect); }
         return;
       }
 
@@ -394,7 +398,7 @@ export function CommentsSection({
     try {
       const res = await deleteCommentAction(comment.id, causeId);
       if (!res.success) {
-        alert(res.error || "No pudimos eliminar el comentario.");
+        avisar(res.error || "No pudimos eliminar el comentario.");
         return;
       }
 
@@ -422,7 +426,7 @@ export function CommentsSection({
       }
     } catch (err: any) {
       console.error("Eliminar comentario:", err?.code, err?.message);
-      alert(`No pudimos eliminar el comentario: ${err?.message || "error desconocido"}`);
+      avisar(`No pudimos eliminar el comentario: ${err?.message || "error desconocido"}`);
     }
   };
 
@@ -434,7 +438,7 @@ export function CommentsSection({
     try {
       const res = await editCommentAction(commentId, causeId, trimmed);
       if (!res.success) {
-        alert(res.error || "No pudimos guardar el cambio.");
+        avisar(res.error || "No pudimos guardar el cambio.");
         return;
       }
       const editedAt = res.editedAt || new Date().toISOString();
@@ -456,7 +460,7 @@ export function CommentsSection({
       setEditingBody("");
     } catch (err: any) {
       console.error("Editar comentario:", err?.code, err?.message);
-      alert(`No pudimos guardar el cambio: ${err?.message || "error desconocido"}`);
+      avisar(`No pudimos guardar el cambio: ${err?.message || "error desconocido"}`);
     }
   };
 

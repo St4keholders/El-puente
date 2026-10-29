@@ -2,6 +2,7 @@
 
 import { createClient } from "@/lib/supabase/server";
 import { copyGoogleAvatarToStorage } from "@/lib/actions/auth";
+import { destinoSeguro } from "@/lib/utils/destino";
 
 export interface OnboardingInput {
   fullName: string;
@@ -54,8 +55,16 @@ export async function completeOnboardingAction(data: OnboardingInput) {
     };
   }
 
+  // Con la identidad verificada el nombre ya es el del documento y no se cambia.
+  const { data: actual } = await supabase
+    .from("profiles")
+    .select("identity_verified, full_name")
+    .eq("id", user.id)
+    .maybeSingle();
+  const nombreFinal = actual?.identity_verified && actual.full_name ? actual.full_name : name;
+
   const { error: rpcErr } = await supabase.rpc("complete_onboarding", {
-    p_full_name: name,
+    p_full_name: nombreFinal,
     p_phone: phone,
     p_terms_version: data.termsVersion || "v1.0",
   });
@@ -76,7 +85,7 @@ export async function completeOnboardingAction(data: OnboardingInput) {
     }
     return {
       success: false,
-      error: `No pudimos completar el registro: ${rpcErr.message}`,
+      error: "No pudimos completar el registro. Inténtalo de nuevo en un momento.",
     };
   }
 
@@ -97,7 +106,7 @@ export async function completeOnboardingAction(data: OnboardingInput) {
       console.error("completeOnboardingAction ubicación:", locErr.code, locErr.message);
       return {
         success: false,
-        error: `Tu registro quedó listo, pero no pudimos guardar tu país y ciudad: ${locErr.message}`,
+        error: "Tu registro quedó listo, pero no pudimos guardar tu país y ciudad. Puedes agregarlos en tu perfil.",
       };
     }
   }
@@ -115,6 +124,7 @@ export async function completeOnboardingAction(data: OnboardingInput) {
     await copyGoogleAvatarToStorage(perfil.avatar_url);
   }
 
-  const targetUrl = !data.next || data.next === "/bienvenida" ? "/" : data.next;
+  const destino = destinoSeguro(data.next, "/");
+  const targetUrl = destino.startsWith("/bienvenida") ? "/" : destino;
   return { success: true, redirect: targetUrl };
 }

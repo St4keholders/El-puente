@@ -8,7 +8,12 @@ import {
   IconoCheckCirculo,
   IconoAlerta,
   IconoCamara,
+  IconoCandado,
+  IconoCargando,
+  IconoOjo,
+  IconoOjoTachado,
 } from "@/components/iconos";
+import { enFormaTitulo } from "@/lib/identity/nombre";
 import { parsePhoneNumber, CountryCode } from "libphonenumber-js";
 import { getAllCountries } from "@/lib/geo/countries";
 import { comprimirFotoPerfil } from "@/lib/media/comprimir";
@@ -20,27 +25,11 @@ import {
   quitarFotoPerfilAction,
 } from "./actions";
 import type { Database } from "@/lib/database.types";
+import { SelectorIndicativo } from "@/components/ui/SelectorIndicativo";
 
 type Profile = Database["public"]["Tables"]["profiles"]["Row"];
 
-const PHONE_COUNTRIES = [
-  { code: "CO", name: "Colombia", dial: "+57" },
-  { code: "MX", name: "México", dial: "+52" },
-  { code: "AR", name: "Argentina", dial: "+54" },
-  { code: "CL", name: "Chile", dial: "+56" },
-  { code: "PE", name: "Perú", dial: "+51" },
-  { code: "ES", name: "España", dial: "+34" },
-  { code: "US", name: "Estados Unidos", dial: "+1" },
-  { code: "VE", name: "Venezuela", dial: "+58" },
-  { code: "EC", name: "Ecuador", dial: "+593" },
-  { code: "BO", name: "Bolivia", dial: "+591" },
-  { code: "DO", name: "Rep. Dominicana", dial: "+1" },
-  { code: "GT", name: "Guatemala", dial: "+502" },
-  { code: "CR", name: "Costa Rica", dial: "+506" },
-  { code: "PA", name: "Panamá", dial: "+507" },
-  { code: "UY", name: "Uruguay", dial: "+598" },
-  { code: "PY", name: "Paraguay", dial: "+595" },
-];
+
 
 interface MisDatosClientProps {
   userId: string;
@@ -52,6 +41,11 @@ interface MisDatosClientProps {
     verified_at: string | null;
     expires_at: string | null;
     decline_reason: string | null;
+    verified_full_name?: string | null;
+    verified_given_names?: string | null;
+    verified_last_names?: string | null;
+    document_country?: string | null;
+    document_last4?: string | null;
   } | null;
 }
 
@@ -111,9 +105,23 @@ export function MisDatosClient({
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [uploadingAvatar, setUploadingAvatar] = useState(false);
   const [copiedId, setCopiedId] = useState(false);
+  const [mostrarDocumento, setMostrarDocumento] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const countries = getAllCountries();
+
+  // Datos que vienen del documento verificado: fijos, no se editan.
+  const nombreLegal = enFormaTitulo(
+    initialVerification?.verified_full_name ||
+      [initialVerification?.verified_given_names, initialVerification?.verified_last_names]
+        .filter(Boolean)
+        .join(" ")
+  );
+  const ultimos4 = initialVerification?.document_last4 || null;
+  const paisDocumento = initialVerification?.document_country
+    ? countries.find((c) => c.id === initialVerification.document_country)?.name ||
+      initialVerification.document_country
+    : null;
 
   const handleAvatarUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -182,13 +190,17 @@ export function MisDatosClient({
     setErrorMsg(null);
 
     const cleanName = fullName.trim();
-    if (cleanName.length < 2) {
+    if (!isVerified && cleanName.length < 2) {
       setErrorMsg("Escribe tu nombre completo (mínimo 2 caracteres).");
       return;
     }
 
     let formattedPhone: string | null = null;
-    if (phoneRaw.trim()) {
+    if (!phoneRaw.trim()) {
+      setErrorMsg("Tu número de contacto es obligatorio.");
+      return;
+    }
+    {
       try {
         const parsed = parsePhoneNumber(phoneRaw, phoneCountry as CountryCode);
         if (!parsed || !parsed.isValid()) {
@@ -324,8 +336,8 @@ export function MisDatosClient({
               )}
 
               {uploadingAvatar && (
-                <div className="absolute inset-0 bg-black/60 flex items-center justify-center text-white text-xs font-mono animate-pulse">
-                  Subiendo...
+                <div className="absolute inset-0 bg-black/55 flex items-center justify-center text-white">
+                  <IconoCargando size={22} className="animate-spin" />
                 </div>
               )}
             </div>
@@ -354,8 +366,8 @@ export function MisDatosClient({
                 disabled={uploadingAvatar || saving}
                 className="inline-flex items-center gap-2 px-3.5 py-2 rounded-xl border border-[var(--line)] bg-[var(--surface-solid)] text-xs font-semibold text-[var(--ink)] hover:bg-[var(--hover)] hover:border-[var(--glass-edge)] transition-colors cursor-pointer"
               >
-                <IconoCamara size={14} />
-                <span>{uploadingAvatar ? "Subiendo foto..." : "Cambiar foto"}</span>
+                {uploadingAvatar ? <IconoCargando size={14} className="animate-spin" /> : <IconoCamara size={14} />}
+                <span>{uploadingAvatar ? "Procesando…" : "Cambiar foto"}</span>
               </button>
 
               {avatarValue && (
@@ -371,31 +383,103 @@ export function MisDatosClient({
             </div>
           </div>
 
-          {/* Nombre Completo */}
-          <div>
-            <div className="flex items-center justify-between mb-1.5">
-              <label
-                htmlFor="profile_fullname"
-                className="block text-xs font-semibold uppercase tracking-wider text-[var(--ink-2)]"
-              >
-                Nombre completo
-              </label>
-              <span className="text-[10px] font-mono px-2 py-0.5 rounded-full bg-emerald-500/10 text-emerald-600 font-semibold border border-emerald-500/20">
-                Público
-              </span>
+          {/* Nombre */}
+          {isVerified ? (
+            <div className="space-y-4">
+              <div>
+                <div className="flex items-center justify-between mb-1.5">
+                  <span className="block text-xs font-semibold uppercase tracking-wider text-[var(--ink-2)]">
+                    Nombre público
+                  </span>
+                  <span className="text-[10px] font-mono px-2 py-0.5 rounded-full bg-emerald-500/10 text-emerald-600 font-semibold border border-emerald-500/20">
+                    Público
+                  </span>
+                </div>
+                <div className="flex items-center gap-2.5 w-full rounded-xl border border-[var(--line)] bg-[var(--track)] py-2.5 px-3.5 text-sm text-[var(--ink)]">
+                  <IconoCandado size={15} className="flex-shrink-0 text-[var(--ink-3)]" />
+                  <span className="truncate">{fullName}</span>
+                </div>
+                <p className="mt-1.5 text-[11px] text-[var(--ink-3)]">
+                  Así te ven en Puente: tus nombres y la inicial de tu apellido.
+                </p>
+              </div>
+
+              <div className="rounded-2xl border border-[var(--line)] bg-[var(--field)] p-4 space-y-3">
+                <div className="flex items-center justify-between gap-2">
+                  <span className="text-xs font-semibold uppercase tracking-wider text-[var(--ink-2)]">
+                    Datos de tu documento
+                  </span>
+                  <span className="text-[10px] font-mono px-2 py-0.5 rounded-full bg-[var(--hover)] text-[var(--ink-3)] font-semibold">
+                    Privado
+                  </span>
+                </div>
+                <dl className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-sm">
+                  <div className="min-w-0">
+                    <dt className="text-[11px] text-[var(--ink-3)]">Nombre completo</dt>
+                    <dd className="font-medium text-[var(--ink)] truncate">{nombreLegal || "—"}</dd>
+                  </div>
+                  <div className="min-w-0">
+                    <dt className="text-[11px] text-[var(--ink-3)]">Identificación</dt>
+                    <dd className="flex items-center gap-2">
+                      <span className="font-mono text-[var(--ink)] tracking-wider">
+                        {mostrarDocumento && ultimos4 ? `•••• ${ultimos4}` : "•••• ••••"}
+                      </span>
+                      {ultimos4 && (
+                        <button
+                          type="button"
+                          onClick={() => setMostrarDocumento((v) => !v)}
+                          aria-label={mostrarDocumento ? "Ocultar identificación" : "Mostrar últimos 4 dígitos"}
+                          className="inline-flex h-7 w-7 items-center justify-center rounded-lg text-[var(--ink-3)] hover:text-[var(--ink)] hover:bg-[var(--hover)] cursor-pointer"
+                        >
+                          {mostrarDocumento ? <IconoOjoTachado size={15} /> : <IconoOjo size={15} />}
+                        </button>
+                      )}
+                    </dd>
+                  </div>
+                  {paisDocumento && (
+                    <div className="min-w-0">
+                      <dt className="text-[11px] text-[var(--ink-3)]">País del documento</dt>
+                      <dd className="font-medium text-[var(--ink)]">{paisDocumento}</dd>
+                    </div>
+                  )}
+                </dl>
+                <p className="text-[11px] text-[var(--ink-3)] flex items-start gap-1.5">
+                  <IconoCandado size={12} className="flex-shrink-0 mt-0.5" />
+                  Vienen de tu documento verificado y no se pueden cambiar. Solo guardamos los últimos 4
+                  dígitos de tu identificación.
+                </p>
+              </div>
             </div>
-            <input
-              id="profile_fullname"
-              type="text"
-              value={fullName}
-              onChange={(e) => setFullName(e.target.value)}
-              required
-              minLength={2}
-              maxLength={80}
-              disabled={saving}
-              className="w-full rounded-xl border border-[var(--line)] bg-[var(--field)] py-2.5 px-3.5 text-sm text-[var(--ink)] placeholder-[var(--ink-3)] focus:border-[var(--accent)] focus:outline-none focus:ring-1 focus:ring-[var(--accent)] transition-all"
-            />
-          </div>
+          ) : (
+            <div>
+              <div className="flex items-center justify-between mb-1.5">
+                <label
+                  htmlFor="profile_fullname"
+                  className="block text-xs font-semibold uppercase tracking-wider text-[var(--ink-2)]"
+                >
+                  Nombre completo
+                </label>
+                <span className="text-[10px] font-mono px-2 py-0.5 rounded-full bg-emerald-500/10 text-emerald-600 font-semibold border border-emerald-500/20">
+                  Público
+                </span>
+              </div>
+              <input
+                id="profile_fullname"
+                type="text"
+                value={fullName}
+                onChange={(e) => setFullName(e.target.value)}
+                required
+                minLength={2}
+                maxLength={80}
+                disabled={saving}
+                autoComplete="name"
+                className="w-full rounded-xl border border-[var(--line)] bg-[var(--field)] py-2.5 px-3.5 text-sm text-[var(--ink)] placeholder-[var(--ink-3)] focus:border-[var(--accent)] focus:outline-none focus:ring-1 focus:ring-[var(--accent)] transition-all"
+              />
+              <p className="mt-1.5 text-[11px] text-[var(--ink-3)]">
+                Al verificar tu identidad, tu nombre se tomará de tu documento y quedará fijo.
+              </p>
+            </div>
+          )}
 
           {/* ID público (solo lectura, no se puede cambiar) */}
           <div>
@@ -520,19 +604,7 @@ export function MisDatosClient({
               </span>
             </div>
             <div className="flex gap-2">
-              <select
-                aria-label="Código de país"
-                value={phoneCountry}
-                onChange={(e) => setPhoneCountry(e.target.value)}
-                disabled={saving}
-                className="w-[125px] flex-shrink-0 rounded-xl border border-[var(--line)] bg-[var(--field)] px-3 py-2.5 text-xs text-[var(--ink)] focus:border-[var(--accent)] focus:outline-none transition-all"
-              >
-                {PHONE_COUNTRIES.map((c) => (
-                  <option key={c.code} value={c.code}>
-                    {c.dial} ({c.code})
-                  </option>
-                ))}
-              </select>
+              <SelectorIndicativo value={phoneCountry} onChange={setPhoneCountry} disabled={saving} />
               <input
                 id="profile_phone"
                 type="tel"
@@ -540,11 +612,11 @@ export function MisDatosClient({
                 onChange={(e) => setPhoneRaw(e.target.value)}
                 placeholder="300 123 4567"
                 disabled={saving}
-                className="flex-1 rounded-xl border border-[var(--line)] bg-[var(--field)] px-3.5 py-2.5 text-sm text-[var(--ink)] placeholder-[var(--ink-3)] focus:border-[var(--accent)] focus:outline-none focus:ring-1 focus:ring-[var(--accent)] transition-all"
+                className="w-0 flex-1 rounded-xl border border-[var(--line)] bg-[var(--field)] px-3.5 py-2.5 text-sm text-[var(--ink)] placeholder-[var(--ink-3)] focus:border-[var(--accent)] focus:outline-none focus:ring-1 focus:ring-[var(--accent)] transition-all"
               />
             </div>
             <p className="mt-1.5 text-[11px] text-[var(--ink-3)]">
-              Este número es completamente privado. Solo se utilizará para coordinar apoyo en causas que publiques.
+              Obligatorio y completamente privado. Solo se usa para coordinar apoyo en causas que publiques.
             </p>
           </div>
 
@@ -553,9 +625,11 @@ export function MisDatosClient({
             <button
               type="submit"
               disabled={saving}
-              className="px-6 py-2.5 rounded-xl bg-[var(--cta)] text-sm font-semibold text-white shadow-md hover:brightness-110 active:scale-95 disabled:opacity-50 transition-all cursor-pointer"
+              aria-busy={saving}
+              className="inline-flex items-center gap-2 px-6 py-2.5 rounded-xl bg-[var(--cta)] text-sm font-semibold text-white shadow-md hover:brightness-110 active:scale-95 disabled:opacity-60 disabled:cursor-wait transition-all cursor-pointer"
             >
-              {saving ? "Guardando..." : "Guardar cambios"}
+              {saving && <IconoCargando size={15} className="animate-spin" />}
+              {saving ? "Guardando…" : "Guardar cambios"}
             </button>
           </div>
         </div>

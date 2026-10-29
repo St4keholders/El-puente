@@ -8,6 +8,9 @@ import { QueryProvider } from "@/components/providers/QueryProvider";
 import { FondoGlobal } from "@/components/fondo/FondoGlobal";
 import { siteConfig } from "@/lib/config/site";
 import { RecordatorioVerificacionModal } from "@/components/identity/RecordatorioVerificacionModal";
+import { BarraNavegacion } from "@/components/layout/BarraNavegacion";
+import { RegistroConexion } from "@/components/layout/RegistroConexion";
+import { Avisos } from "@/components/ui/Avisos";
 
 const instrumentSans = Instrument_Sans({
   subsets: ["latin"],
@@ -65,6 +68,8 @@ export default function RootLayout({
     <html lang="es" suppressHydrationWarning>
       <body className={`${instrumentSans.variable} font-sans antialiased selection:bg-[var(--accent)] selection:text-white`}>
         <QueryProvider>
+          <BarraNavegacion />
+          <RegistroConexion />
           {/* Global star background — hidden on home page by FondoGlobal */}
           <FondoGlobal />
 
@@ -81,6 +86,7 @@ export default function RootLayout({
           </div>
           <BottomNav />
           <RecordatorioVerificacionModal />
+          <Avisos />
         </QueryProvider>
       </body>
     </html>

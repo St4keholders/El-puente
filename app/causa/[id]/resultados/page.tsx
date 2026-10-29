@@ -16,6 +16,7 @@ import { Glass } from "@/components/ui/Glass";
 import { createClient } from "@/lib/supabase/client";
 import { useUser } from "@/lib/hooks/useUser";
 import { compressImageToWebP, validateVideo } from "@/lib/utils/media";
+import { avisarNavegacion } from "@/components/layout/BarraNavegacion";
 
 interface ResultsMediaItem {
   id?: string;
@@ -50,6 +51,7 @@ export default function PublicarResultadosPage() {
   useEffect(() => {
     if (userLoading) return;
     if (!user) {
+      avisarNavegacion();
       router.push(`/entrar?next=/causa/${id}/resultados`);
       return;
     }
@@ -62,14 +64,12 @@ export default function PublicarResultadosPage() {
         .single();
 
       if (error || !data) {
-        alert("Causa no encontrada");
-        router.push("/explorar");
+        router.replace("/explorar");
         return;
       }
 
       if (data.author_id !== user!.id) {
-        alert("No tienes permiso para gestionar los resultados de esta causa.");
-        router.push(`/causa/${id}`);
+        router.replace(`/causa/${id}`);
         return;
       }
 
@@ -232,7 +232,8 @@ export default function PublicarResultadosPage() {
           );
         }
       } catch (err: any) {
-        alert("Error al subir archivo: " + err.message);
+        console.error("Subir foto de resultado:", err?.message);
+        setErrorMsg("No se pudo subir una de las fotos. Inténtalo de nuevo.");
         setMediaList((prev) => prev.filter((m) => m.id !== tempId));
       }
     }
@@ -298,6 +299,7 @@ export default function PublicarResultadosPage() {
 
       if (causeErr) throw causeErr;
 
+      avisarNavegacion();
       router.push(`/causa/${cause.id}?resultados_publicados=1`);
     } catch (err: any) {
       setErrorMsg("Error al publicar resultados: " + err.message);

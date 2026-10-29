@@ -35,7 +35,18 @@ export function urlDeMedio(bucket: string, storagePath: string | null | undefine
  */
 export function urlDeAvatar(valor: string | null | undefined): string | null {
   if (!valor) return null;
-  if (valor.startsWith("http")) return valor;
+  if (valor.startsWith("http")) {
+    // Solo fotos de Google o de nuestro propio almacenamiento: nada de URLs puestas a mano.
+    try {
+      const url = new URL(valor);
+      const permitido =
+        url.protocol === "https:" &&
+        (url.hostname.endsWith(".googleusercontent.com") || valor.startsWith(`${SUPABASE_URL}/storage/v1/object/public/`));
+      return permitido ? valor : null;
+    } catch {
+      return null;
+    }
+  }
   return urlDeMedio(BUCKET_AVATARES, valor) || null;
 }
 

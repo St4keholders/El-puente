@@ -14,6 +14,7 @@ import {
 import { Glass } from "@/components/ui/Glass";
 import { createClient } from "@/lib/supabase/client";
 import { useUser } from "@/lib/hooks/useUser";
+import { avisarNavegacion } from "@/components/layout/BarraNavegacion";
 
 export default function CerrarCausaPage() {
   const params = useParams();
@@ -29,10 +30,12 @@ export default function CerrarCausaPage() {
   const [closingNote, setClosingNote] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isClosedSuccess, setIsClosedSuccess] = useState(false);
+  const [errorCierre, setErrorCierre] = useState<string | null>(null);
 
   useEffect(() => {
     if (userLoading) return;
     if (!user) {
+      avisarNavegacion();
       router.push(`/entrar?next=/causa/${id}/cerrar`);
       return;
     }
@@ -45,14 +48,12 @@ export default function CerrarCausaPage() {
         .single();
 
       if (error || !data) {
-        alert("Causa no encontrada");
-        router.push("/explorar");
+        router.replace("/explorar");
         return;
       }
 
       if (data.author_id !== user!.id) {
-        alert("No tienes permiso para cerrar esta causa.");
-        router.push(`/causa/${id}`);
+        router.replace(`/causa/${id}`);
         return;
       }
 
@@ -78,6 +79,7 @@ export default function CerrarCausaPage() {
     if (!cause || isSubmitting) return;
 
     setIsSubmitting(true);
+    setErrorCierre(null);
     try {
       const { error } = await supabase
         .from("causes")
@@ -91,7 +93,8 @@ export default function CerrarCausaPage() {
       if (error) throw error;
       setIsClosedSuccess(true);
     } catch (err: any) {
-      alert("Error al cerrar la causa: " + err.message);
+      console.error("Cerrar causa:", err?.code, err?.message);
+      setErrorCierre("No se pudo cerrar la causa. Revisa tu conexión e inténtalo de nuevo.");
     } finally {
       setIsSubmitting(false);
     }
@@ -203,6 +206,12 @@ export default function CerrarCausaPage() {
                 className="w-full px-4 py-3 rounded-2xl glass-surface border border-glass-tint focus:border-accent outline-none text-text-primary text-sm resize-none"
               />
             </div>
+
+            {errorCierre && (
+              <p role="alert" className="rounded-xl border border-red-500/30 bg-red-500/10 p-3 text-xs font-medium text-red-600 dark:text-red-400">
+                {errorCierre}
+              </p>
+            )}
 
             <div className="pt-2 flex items-center justify-end gap-3">
               <Link

@@ -23,6 +23,8 @@ import {
   IconoMas,
   IconoCargando,
   IconoInfo,
+  IconoX,
+  IconoArchivo,
 } from "@/components/iconos";
 import { Glass } from "@/components/ui/Glass";
 import { comprimirFotoCausa } from "@/lib/media/comprimir";
@@ -43,10 +45,15 @@ import {
   reordenarMediosAction,
   guardarTelefonoAction,
   publicarCausaAction,
+  estadoPaisAction,
   type DraftFields,
 } from "./actions";
+import type { EstadoPaisPublicacion } from "@/lib/identity/ubicacion";
 import type { Database } from "@/lib/database.types";
 import { parsePhoneNumberFromString, type CountryCode } from "libphonenumber-js";
+import { avisarNavegacion } from "@/components/layout/BarraNavegacion";
+import { paisesTelefono } from "@/lib/geo/telefonos";
+import { SelectorIndicativo } from "@/components/ui/SelectorIndicativo";
 
 type CauseCategory = Database["public"]["Enums"]["cause_category"];
 type DonationMethodKind = Database["public"]["Enums"]["donation_method_kind"];
@@ -116,28 +123,8 @@ const METHOD_KINDS: Array<{ id: DonationMethodKind; label: string }> = [
 
 const CURRENCIES = ["USD", "EUR", "COP", "MXN", "CLP", "ARS", "PEN", "BRL"];
 
-const PHONE_COUNTRIES = [
-  { code: "CO", name: "Colombia", dial: "+57" },
-  { code: "MX", name: "México", dial: "+52" },
-  { code: "AR", name: "Argentina", dial: "+54" },
-  { code: "CL", name: "Chile", dial: "+56" },
-  { code: "PE", name: "Perú", dial: "+51" },
-  { code: "EC", name: "Ecuador", dial: "+593" },
-  { code: "VE", name: "Venezuela", dial: "+58" },
-  { code: "ES", name: "España", dial: "+34" },
-  { code: "US", name: "Estados Unidos", dial: "+1" },
-  { code: "BR", name: "Brasil", dial: "+55" },
-  { code: "BO", name: "Bolivia", dial: "+591" },
-  { code: "UY", name: "Uruguay", dial: "+598" },
-  { code: "PY", name: "Paraguay", dial: "+595" },
-  { code: "CR", name: "Costa Rica", dial: "+506" },
-  { code: "PA", name: "Panamá", dial: "+507" },
-  { code: "GT", name: "Guatemala", dial: "+502" },
-  { code: "HN", name: "Honduras", dial: "+504" },
-  { code: "SV", name: "El Salvador", dial: "+503" },
-  { code: "NI", name: "Nicaragua", dial: "+505" },
-  { code: "DO", name: "Rep. Dominicana", dial: "+1" },
-];
+// Todos los países con indicativo (los más usados primero)
+const PHONE_COUNTRIES = paisesTelefono();
 
 interface NuevaCausaClientProps {
   currentUser: any;
@@ -180,6 +167,8 @@ function NuevaCausaContent({
     actionLabel?: string;
   } | null>(null);
   const [isPublishing, setIsPublishing] = useState(false);
+  // Regla de país: país del documento o país de conexión confirmado (6 h estable)
+  const [estadoPais, setEstadoPais] = useState<EstadoPaisPublicacion | null>(null);
 
   // Step 1: Media
   const [mediaList, setMediaList] = useState<MediaUploadItem[]>([]);
@@ -215,6 +204,9 @@ function NuevaCausaContent({
   const [profileMethods, setProfileMethods] = useState<ProfileDonationMethod[]>([]);
   const [saveInProfile, setSaveInProfile] = useState(true);
   const [showMethodModal, setShowMethodModal] = useState(false);
+  const [guardandoMetodo, setGuardandoMetodo] = useState(false);
+  const [errorMetodo, setErrorMetodo] = useState<string | null>(null);
+  const [metodoOcupado, setMetodoOcupado] = useState<string | null>(null);
   const [newMethod, setNewMethod] = useState<{
     kind: DonationMethodKind;
     provider: string;
@@ -250,6 +242,15 @@ function NuevaCausaContent({
     [countries, countryCode]
   );
 
+  // Con la identidad verificada solo se ofrecen los países donde puede publicar.
+  const paisRestringido = Boolean(estadoPais?.verificado && estadoPais.opciones.length > 0);
+  const paisesPermitidos = useMemo(
+    () => (paisRestringido ? countries.filter((c) => estadoPais!.opciones.includes(c.id)) : countries),
+    [countries, paisRestringido, estadoPais]
+  );
+  const nombrePais = (codigo: string | null | undefined) =>
+    (codigo && countries.find((c) => c.id === codigo)?.n) || codigo || "";
+
   // 1. Initialize or load draft
   useEffect(() => {
     async function initDraft() {
@@ -264,6 +265,7 @@ function NuevaCausaContent({
         });
 
         if (res.redirect) {
+          avisarNavegacion();
           router.push(res.redirect);
           return;
         }
@@ -366,6 +368,31 @@ function NuevaCausaContent({
     initDraft();
   }, [user, retryCount]);
 
+  // 1b. Países donde puede publicar (registra también desde dónde se conecta)
+  const estadoPaisCargado = useRef(false);
+  useEffect(() => {
+    if (initializing || !causeId || estadoPaisCargado.current) return;
+    estadoPaisCargado.current = true;
+    const paisDelBorrador = countryCode;
+    estadoPaisAction()
+      .then((res) => {
+        if (!res.success) return;
+        setEstadoPais(res.estado);
+        const { verificado, opciones } = res.estado;
+        // Un borrador con un país que ya no puede usar pasa al primero permitido
+        if (verificado && opciones.length > 0 && !opciones.includes(paisDelBorrador)) {
+          setCountryCode(opciones[0]);
+          setCity("");
+          setRegion("");
+          setLat(null);
+          setLng(null);
+        }
+      })
+      .catch((err) => console.error("Estado de país:", err?.message));
+    // Solo una vez, con el país que traía el borrador al cargar.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [initializing, causeId]);
+
   // 2. Guardado del borrador en el servidor. Devuelve true si quedó guardado.
   const draftFields: DraftFields = useMemo(
     () => ({
@@ -443,7 +470,11 @@ function NuevaCausaContent({
       try {
         const { cities, remoteError } = await defaultGeocoder.searchCities(citySearchQuery, countryCode);
         if (seq !== citySearchSeq.current) return; // llegó una búsqueda más nueva
-        setCitySuggestions(cities);
+        setCitySuggestions(
+          paisRestringido
+            ? cities.filter((c) => !c.countryCode || estadoPais!.opciones.includes(c.countryCode.toUpperCase()))
+            : cities
+        );
         setCityRemoteError(remoteError);
       } catch (err: any) {
         console.error("Búsqueda de ciudades:", err?.name, err?.message);
@@ -459,11 +490,21 @@ function NuevaCausaContent({
     }, 250);
 
     return () => clearTimeout(timer);
-  }, [citySearchQuery, countryCode]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [citySearchQuery, countryCode, paisRestringido]);
 
   const handleSelectCity = (item: GeocodedCity) => {
     // La búsqueda cubre todos los países: si eligió una ciudad de otro país, el país la acompaña
     const itemCountry = item.countryCode?.toUpperCase();
+    if (paisRestringido && itemCountry && !estadoPais!.opciones.includes(itemCountry)) {
+      setFieldErrors((prev) => ({
+        ...prev,
+        city: `${item.name} está en ${nombrePais(itemCountry)}. Solo puedes publicar en ${estadoPais!.opciones
+          .map(nombrePais)
+          .join(" o ")}.`,
+      }));
+      return;
+    }
     if (itemCountry && itemCountry !== countryCode && countries.some((c) => c.id === itemCountry)) {
       setCountryCode(itemCountry);
     }
@@ -548,11 +589,11 @@ function NuevaCausaContent({
       if (!isImage && !isVideo) continue;
 
       if (isImage && currentImages >= 10) {
-        alert("Máximo 10 imágenes permitidas.");
+        setActionError("Puedes subir máximo 10 imágenes.");
         continue;
       }
       if (isVideo && currentVideos >= 1) {
-        alert("Máximo 1 video permitido por causa.");
+        setActionError("Puedes subir máximo 1 video por causa.");
         continue;
       }
 
@@ -727,7 +768,7 @@ function NuevaCausaContent({
   ): Promise<boolean> => {
     if (!causeId || !user) return false;
     if (donationMethods.length >= 5) {
-      alert("Puedes agregar un máximo de 5 métodos por causa.");
+      setActionError("Puedes agregar máximo 5 métodos por causa.");
       return false;
     }
     const nextPos = donationMethods.length;
@@ -764,26 +805,42 @@ function NuevaCausaContent({
   };
 
   const handleToggleProfileMethod = async (pm: ProfileDonationMethod) => {
+    if (metodoOcupado) return;
     const existing = donationMethods.find(
       (m) =>
         m.profile_method_id === pm.id ||
         (m.provider === pm.provider && m.account_value === pm.account_value)
     );
 
-    if (existing) {
-      await handleRemoveDonationMethod(existing.id);
-    } else {
-      await addMethod({ ...pm, profile_method_id: pm.id }, false);
+    setMetodoOcupado(pm.id);
+    try {
+      if (existing) {
+        await handleRemoveDonationMethod(existing.id);
+      } else {
+        await addMethod({ ...pm, profile_method_id: pm.id }, false);
+      }
+    } finally {
+      setMetodoOcupado(null);
     }
   };
 
   const handleAddDonationMethod = async () => {
-    if (!newMethod.provider || !newMethod.account_holder || !newMethod.account_value) {
-      alert("Por favor completa el proveedor, titular y cuenta.");
+    if (!newMethod.provider.trim() || !newMethod.account_holder.trim() || !newMethod.account_value.trim()) {
+      setErrorMetodo("Completa el proveedor, el titular y el dato de la cuenta.");
       return;
     }
-    const ok = await addMethod(newMethod, saveInProfile);
-    if (!ok) return;
+    setErrorMetodo(null);
+    setGuardandoMetodo(true);
+    let ok = false;
+    try {
+      ok = await addMethod(newMethod, saveInProfile);
+    } finally {
+      setGuardandoMetodo(false);
+    }
+    if (!ok) {
+      setErrorMetodo("No se pudo guardar el método. Revisa el aviso de arriba e inténtalo de nuevo.");
+      return;
+    }
 
     setNewMethod({
       kind: "transferencia_bancaria",
@@ -798,6 +855,7 @@ function NuevaCausaContent({
   const handleRemoveDonationMethod = async (id?: string) => {
     if (!id) return;
     setActionError(null);
+    setMetodoOcupado((actual) => actual ?? id);
     try {
       const res = await quitarMetodoAction(id);
       if (!res.success) {
@@ -808,17 +866,26 @@ function NuevaCausaContent({
     } catch (err: any) {
       console.error("Quitar método:", err?.code, err?.message);
       setActionError(`No se pudo quitar el método: ${err?.message || "error de conexión"}`);
+    } finally {
+      setMetodoOcupado((actual) => (actual === id ? null : actual));
     }
   };
 
   const handleCopyPreviousMethod = async (method: DonationMethodItem) => {
-    await addMethod(method, false);
+    if (metodoOcupado) return;
+    const clave = `prev-${method.provider}-${method.account_value}`;
+    setMetodoOcupado(clave);
+    try {
+      await addMethod(method, false);
+    } finally {
+      setMetodoOcupado(null);
+    }
   };
 
   // Insumos helper actions
   const handleAddSupply = () => {
     if (suppliesList.length >= 12) {
-      alert("Puedes agregar un máximo de 12 insumos por causa.");
+      setActionError("Puedes agregar máximo 12 insumos por causa.");
       return;
     }
     setSuppliesList((prev) => [
@@ -943,6 +1010,9 @@ function NuevaCausaContent({
     }
     if (step === 3) {
       if (!countryCode) errs.country = "Elige tu país.";
+      else if (paisRestringido && !estadoPais!.opciones.includes(countryCode)) {
+        errs.country = `Solo puedes publicar en ${estadoPais!.opciones.map(nombrePais).join(" o ")}.`;
+      }
       if (!city || lat === null || lng === null) errs.city = "Elige tu ciudad de la lista.";
     }
     if (step === 4) {
@@ -1019,6 +1089,20 @@ function NuevaCausaContent({
       message: "El titular de tu cuenta debe coincidir con el nombre de tu documento. Revisa tus métodos de pago.",
       step: 4,
     },
+    PAIS_NO_PERMITIDO: {
+      message:
+        "Solo puedes publicar en el país de tu documento o en el país desde donde te conectas (después de 6 horas seguidas allí).",
+      step: 3,
+    },
+    UBICACION_EN_CONFIRMACION: {
+      message:
+        "Estamos confirmando tu ubicación: te conectas desde un país distinto al de tu documento. Podrás publicar cuando completes 6 horas seguidas conectado desde allí. Tu causa queda guardada.",
+      step: 3,
+    },
+    UBICACION_SIN_CONFIRMAR: {
+      message: "No pudimos confirmar desde dónde te conectas. Recarga la página e inténtalo de nuevo.",
+      step: 3,
+    },
   };
 
   // Step 5: Publish Cause Action
@@ -1069,6 +1153,7 @@ function NuevaCausaContent({
       }
 
       // Success! Navigate to the published cause page
+      avisarNavegacion();
       router.push(`/causa/${causeId}?publicada=1`);
     } catch (err: any) {
       console.error("Publicar causa:", err?.code, err?.message);
@@ -1110,7 +1195,7 @@ function NuevaCausaContent({
   const hasMinImages = readyImages >= 2;
 
   return (
-    <div className="max-w-4xl mx-auto px-4 pt-28 md:pt-32 pb-24">
+    <div className="max-w-4xl mx-auto px-4 pt-28 md:pt-32 pb-[calc(9rem+env(safe-area-inset-bottom))] md:pb-24">
       {/* Wizard Header & Stepper */}
       <div className="mb-8 text-center">
         <h1 className="text-2xl sm:text-3xl font-bold text-text-primary tracking-tight">
@@ -1186,11 +1271,22 @@ function NuevaCausaContent({
       </div>
 
       {actionError && (
-        <div className="mb-6 p-4 rounded-2xl bg-red-500/10 border border-red-500/30 flex items-start gap-3 text-red-400">
+        <div
+          role="alert"
+          className="sticky top-24 z-30 mb-6 p-4 rounded-2xl bg-[var(--surface-solid)] border border-red-500/40 shadow-lg flex items-start gap-3 text-red-600 dark:text-red-400"
+        >
           <IconoAlerta size={20} className="flex-shrink-0 mt-0.5" />
           <div className="flex-1 text-sm">
             <p className="font-semibold">{actionError}</p>
           </div>
+          <button
+            type="button"
+            onClick={() => setActionError(null)}
+            aria-label="Cerrar aviso"
+            className="flex-shrink-0 rounded-lg p-1 hover:bg-red-500/10 cursor-pointer"
+          >
+            <IconoX size={16} />
+          </button>
         </div>
       )}
 
@@ -1574,10 +1670,54 @@ function NuevaCausaContent({
               </div>
             </div>
 
+            {/* Regla de país */}
+            {estadoPais?.verificado ? (
+              estadoPais.listo ? (
+                <div className="p-4 rounded-2xl bg-emerald-500/10 border border-emerald-500/20 text-emerald-700 dark:text-emerald-400 flex items-start gap-3 text-xs">
+                  <IconoCheckCirculo size={18} className="flex-shrink-0 mt-0.5" />
+                  <p>
+                    Puedes publicar en{" "}
+                    <strong>{estadoPais.opciones.map(nombrePais).join(" o ")}</strong>
+                    {estadoPais.opciones.length > 1
+                      ? ": el país de tu documento y el país desde donde te conectas."
+                      : ", el país de tu documento."}
+                  </p>
+                </div>
+              ) : (
+                <div className="p-4 rounded-2xl bg-amber-500/10 border border-amber-500/25 text-amber-700 dark:text-amber-400 flex items-start gap-3 text-xs">
+                  <IconoAlerta size={18} className="flex-shrink-0 mt-0.5" />
+                  <div className="space-y-1">
+                    <p className="font-semibold">Estamos confirmando tu ubicación</p>
+                    <p className="opacity-90">
+                      {estadoPais.paisConexion
+                        ? `Te conectas desde ${nombrePais(estadoPais.paisConexion)}, que no es el país de tu documento.`
+                        : "No pudimos saber desde qué país te conectas."}{" "}
+                      Para publicar debes llevar 6 horas seguidas conectado desde el mismo país
+                      {estadoPais.minutosRestantes > 0
+                        ? ` (faltan unas ${Math.floor(estadoPais.minutosRestantes / 60)} h ${
+                            estadoPais.minutosRestantes % 60
+                          } min)`
+                        : ""}
+                      . Si usas una VPN, apágala: cada cambio de país reinicia el tiempo. Mientras tanto puedes
+                      dejar todo listo; tu borrador se guarda solo.
+                    </p>
+                  </div>
+                </div>
+              )
+            ) : estadoPais ? (
+              <p className="text-[11px] text-text-secondary">
+                Al verificar tu identidad solo podrás publicar en el país de tu documento o en el país desde
+                donde te conectas (después de 6 horas seguidas allí).
+              </p>
+            ) : null}
+
             {/* Country Selector */}
             <div>
-              <label className="font-semibold text-text-primary text-xs block mb-1.5">País *</label>
+              <label htmlFor="causa_pais" className="font-semibold text-text-primary text-xs block mb-1.5">
+                País *
+              </label>
               <select
+                id="causa_pais"
                 value={countryCode}
                 onChange={(e) => {
                   setCountryCode(e.target.value);
@@ -1585,9 +1725,10 @@ function NuevaCausaContent({
                   setLat(null);
                   setLng(null);
                 }}
-                className="w-full px-4 py-3 rounded-2xl glass-surface border border-glass-tint focus:border-accent outline-none text-text-primary text-sm bg-transparent"
+                disabled={paisesPermitidos.length === 1 && paisesPermitidos[0].id === countryCode}
+                className="w-full px-4 py-3 rounded-2xl glass-surface border border-[var(--line)] focus:border-accent outline-none text-text-primary text-sm disabled:opacity-90"
               >
-                {countries.map((c) => (
+                {paisesPermitidos.map((c) => (
                   <option key={c.id} value={c.id}>
                     {c.n} ({c.id})
                   </option>
@@ -1735,19 +1876,19 @@ function NuevaCausaContent({
                   id: "dinero" as const,
                   title: "Dinero",
                   desc: "Recibe fondos mediante transferencias bancarias o billeteras digitales.",
-                  icon: "💳",
+                  icon: <IconoTarjeta size={22} />,
                 },
                 {
                   id: "insumos" as const,
                   title: "Insumos",
                   desc: "Recibe víveres, ropa, colchonetas, materiales o medicinas.",
-                  icon: "📦",
+                  icon: <IconoArchivo size={22} />,
                 },
                 {
                   id: "ambas" as const,
                   title: "Ambos",
                   desc: "Permite recibir tanto apoyo económico como donaciones en especie.",
-                  icon: "🤝",
+                  icon: <IconoCorazon size={22} />,
                 },
               ].map((opt) => (
                 <button
@@ -1760,7 +1901,7 @@ function NuevaCausaContent({
                       : "glass-surface border-glass-tint hover:border-glass-tint/80 text-text-secondary"
                   }`}
                 >
-                  <div className="text-2xl mb-2">{opt.icon}</div>
+                  <div className="mb-2 text-accent">{opt.icon}</div>
                   <div className="font-bold text-sm text-text-primary">{opt.title}</div>
                   <div className="text-xs text-text-secondary mt-1 leading-snug">{opt.desc}</div>
                 </button>
@@ -1783,7 +1924,10 @@ function NuevaCausaContent({
 
                   <button
                     type="button"
-                    onClick={() => setShowMethodModal(true)}
+                    onClick={() => {
+                      setErrorMetodo(null);
+                      setShowMethodModal(true);
+                    }}
                     className="px-4 py-2 rounded-full bg-accent text-white text-xs font-semibold flex items-center gap-1.5 hover:bg-accent/90 shadow-md shadow-accent/20 self-start"
                   >
                     <IconoMas size={16} /> Añadir método
@@ -1829,12 +1973,17 @@ function NuevaCausaContent({
                                 : "glass-tint border-glass-tint hover:border-glass-tint/80 text-text-secondary"
                             }`}
                           >
-                            <input
-                              type="checkbox"
-                              checked={isChecked}
-                              onChange={() => handleToggleProfileMethod(pm)}
-                              className="mt-1 rounded accent-[var(--accent)] cursor-pointer"
-                            />
+                            {metodoOcupado === pm.id ? (
+                              <IconoCargando size={14} className="mt-1 animate-spin text-accent flex-shrink-0" />
+                            ) : (
+                              <input
+                                type="checkbox"
+                                checked={isChecked}
+                                disabled={Boolean(metodoOcupado)}
+                                onChange={() => handleToggleProfileMethod(pm)}
+                                className="mt-1 rounded accent-[var(--accent)] cursor-pointer"
+                              />
+                            )}
                             <div className="min-w-0 flex-1 text-xs">
                               <div className="flex items-center gap-1.5">
                                 <span className="font-semibold text-text-primary">{pm.provider}</span>
@@ -1867,9 +2016,14 @@ function NuevaCausaContent({
                           key={idx}
                           type="button"
                           onClick={() => handleCopyPreviousMethod(prevM)}
-                          className="px-3 py-1.5 rounded-xl glass-tint border border-glass-tint hover:border-accent text-xs text-text-primary flex items-center gap-1.5 transition-all"
+                          disabled={Boolean(metodoOcupado)}
+                          className="px-3 py-1.5 rounded-xl glass-tint border border-glass-tint hover:border-accent text-xs text-text-primary flex items-center gap-1.5 transition-all disabled:opacity-60"
                         >
-                          <IconoMas size={12} className="text-accent" />
+                          {metodoOcupado === `prev-${prevM.provider}-${prevM.account_value}` ? (
+                            <IconoCargando size={12} className="animate-spin text-accent" />
+                          ) : (
+                            <IconoMas size={12} className="text-accent" />
+                          )}
                           <span>
                             {prevM.provider}: {prevM.account_value}
                           </span>
@@ -1887,9 +2041,9 @@ function NuevaCausaContent({
                         key={m.id || idx}
                         className="p-4 rounded-2xl glass-surface border border-glass-tint flex items-center justify-between gap-4"
                       >
-                        <div className="space-y-1 text-xs">
+                        <div className="min-w-0 space-y-1 text-xs">
                           <div className="flex items-center gap-2">
-                            <span className="font-bold text-text-primary text-sm">{m.provider}</span>
+                            <span className="font-bold text-text-primary text-sm truncate">{m.provider}</span>
                             <span className="px-2 py-0.5 rounded-md bg-glass-tint text-accent text-[10px] uppercase font-semibold">
                               {METHOD_KINDS.find((k) => k.id === m.kind)?.label.split(" ")[0]}
                             </span>
@@ -1897,7 +2051,7 @@ function NuevaCausaContent({
                           <p className="text-text-secondary">
                             <span className="font-medium text-text-primary">Titular:</span> {m.account_holder}
                           </p>
-                          <p className="font-mono text-text-primary">{m.account_value}</p>
+                          <p className="font-mono text-text-primary break-all">{m.account_value}</p>
                           {m.details && (
                             <p className="text-text-secondary italic text-[11px]">{m.details}</p>
                           )}
@@ -1906,10 +2060,16 @@ function NuevaCausaContent({
                         <button
                           type="button"
                           onClick={() => handleRemoveDonationMethod(m.id)}
-                          className="p-2 rounded-full text-text-secondary hover:text-red-400 hover:bg-glass-tint transition-colors"
+                          disabled={metodoOcupado === m.id}
+                          className="flex-shrink-0 p-2 rounded-full text-text-secondary hover:text-red-400 hover:bg-glass-tint transition-colors"
                           title="Eliminar método"
+                          aria-label="Eliminar método"
                         >
-                          <IconoBasura size={16} />
+                          {metodoOcupado === m.id ? (
+                            <IconoCargando size={16} className="animate-spin" />
+                          ) : (
+                            <IconoBasura size={16} />
+                          )}
                         </button>
                       </div>
                     ))}
@@ -1935,7 +2095,7 @@ function NuevaCausaContent({
                 <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
                   <div>
                     <h3 className="text-base font-bold text-text-primary flex items-center gap-2">
-                      <span>📦</span>
+                      <IconoArchivo size={16} className="text-accent" />
                       Insumos que necesitas
                     </h3>
                     <p className="text-xs text-text-secondary mt-0.5">
@@ -2034,7 +2194,7 @@ function NuevaCausaContent({
                   </div>
                 ) : (
                   <div className="p-6 rounded-2xl border border-dashed border-glass-tint text-center text-text-secondary text-xs">
-                    <span className="text-2xl mb-1 block">📦</span>
+                    <IconoArchivo size={26} className="mx-auto mb-1.5 opacity-50" />
                     <p>Aún no has agregado ningún insumo a la lista.</p>
                     <button
                       type="button"
@@ -2084,29 +2244,52 @@ function NuevaCausaContent({
               </div>
             )}
 
-            {/* Modal for adding method */}
+            {/* Modal para agregar un medio de donación */}
             {showMethodModal && (
-              <div className="fixed inset-0 bg-black/70 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-                <div className="glass-card rounded-3xl p-6 w-full max-w-md space-y-4 border border-glass-tint">
-                  <div className="flex items-center justify-between">
-                    <h3 className="text-base font-bold text-text-primary">Añadir Medio de Donación</h3>
+              <div
+                role="dialog"
+                aria-modal="true"
+                aria-labelledby="titulo-metodo"
+                className="fixed inset-0 z-[70] flex items-end sm:items-center justify-center sm:p-4 bg-black/60 backdrop-blur-sm animate-fade-in"
+                onClick={(e) => {
+                  if (e.target === e.currentTarget && !guardandoMetodo) setShowMethodModal(false);
+                }}
+              >
+                <div className="w-full sm:max-w-md max-h-[92dvh] overflow-y-auto overscroll-contain rounded-t-3xl sm:rounded-3xl bg-[var(--surface-solid)] border border-[var(--line)] shadow-2xl p-5 sm:p-6 pb-[max(1.25rem,env(safe-area-inset-bottom))] space-y-4">
+                  <div className="flex items-center justify-between gap-3">
+                    <h3 id="titulo-metodo" className="text-base font-bold text-[var(--ink)]">
+                      Agregar medio de donación
+                    </h3>
                     <button
+                      type="button"
                       onClick={() => setShowMethodModal(false)}
-                      className="text-text-secondary hover:text-text-primary text-xs"
+                      disabled={guardandoMetodo}
+                      aria-label="Cerrar"
+                      className="flex h-9 w-9 items-center justify-center rounded-xl border border-[var(--line)] bg-[var(--hover)] text-[var(--ink-2)] hover:text-[var(--ink)] cursor-pointer"
                     >
-                      ✕
+                      <IconoX size={16} />
                     </button>
                   </div>
 
-                  <div className="space-y-3 text-xs">
+                  {errorMetodo && (
+                    <div className="flex items-start gap-2 rounded-xl bg-red-500/10 border border-red-500/20 p-3 text-xs text-red-600 dark:text-red-400">
+                      <IconoAlerta size={15} className="flex-shrink-0 mt-0.5" />
+                      <p>{errorMetodo}</p>
+                    </div>
+                  )}
+
+                  <div className="space-y-3.5 text-sm">
                     <div>
-                      <label className="text-text-secondary block mb-1">Tipo de método *</label>
+                      <label htmlFor="metodo_tipo" className="text-xs font-semibold text-[var(--ink-2)] block mb-1.5">
+                        Tipo de método *
+                      </label>
                       <select
+                        id="metodo_tipo"
                         value={newMethod.kind}
                         onChange={(e) =>
                           setNewMethod({ ...newMethod, kind: e.target.value as DonationMethodKind })
                         }
-                        className="w-full px-3 py-2 rounded-xl glass-surface border border-glass-tint text-text-primary outline-none bg-transparent"
+                        className="w-full px-3.5 py-3 rounded-xl bg-[var(--field)] border border-[var(--line)] text-[var(--ink)] outline-none focus:border-[var(--accent)]"
                       >
                         {METHOD_KINDS.map((k) => (
                           <option key={k.id} value={k.id}>
@@ -2117,84 +2300,98 @@ function NuevaCausaContent({
                     </div>
 
                     <div>
-                      <label className="text-text-secondary block mb-1">
-                        Proveedor o Banco (ej: Nequi, Bancolombia, BBVA, Mercado Pago, PayPal) *
+                      <label htmlFor="metodo_proveedor" className="text-xs font-semibold text-[var(--ink-2)] block mb-1.5">
+                        Banco o app *
                       </label>
                       <input
+                        id="metodo_proveedor"
                         type="text"
                         value={newMethod.provider}
                         onChange={(e) => setNewMethod({ ...newMethod, provider: e.target.value })}
-                        placeholder="Nombre de la entidad o app"
-                        className="w-full px-3 py-2 rounded-xl glass-surface border border-glass-tint text-text-primary outline-none"
+                        placeholder="Nequi, Bancolombia, BBVA, PayPal…"
+                        maxLength={60}
+                        className="w-full px-3.5 py-3 rounded-xl bg-[var(--field)] border border-[var(--line)] text-[var(--ink)] placeholder-[var(--ink-3)] outline-none focus:border-[var(--accent)]"
                       />
                     </div>
 
                     <div>
-                      <label className="text-text-secondary block mb-1">Nombre del Titular *</label>
+                      <label htmlFor="metodo_titular" className="text-xs font-semibold text-[var(--ink-2)] block mb-1.5">
+                        Nombre del titular *
+                      </label>
                       <input
+                        id="metodo_titular"
                         type="text"
                         value={newMethod.account_holder}
-                        onChange={(e) =>
-                          setNewMethod({ ...newMethod, account_holder: e.target.value })
-                        }
-                        placeholder="Nombre y apellido completo"
-                        className="w-full px-3 py-2 rounded-xl glass-surface border border-glass-tint text-text-primary outline-none"
+                        onChange={(e) => setNewMethod({ ...newMethod, account_holder: e.target.value })}
+                        placeholder="Tal como aparece en tu documento"
+                        autoComplete="name"
+                        maxLength={80}
+                        className="w-full px-3.5 py-3 rounded-xl bg-[var(--field)] border border-[var(--line)] text-[var(--ink)] placeholder-[var(--ink-3)] outline-none focus:border-[var(--accent)]"
                       />
+                      <p className="mt-1 text-[11px] text-[var(--ink-3)]">
+                        Debe coincidir con el nombre de tu documento verificado.
+                      </p>
                     </div>
 
                     <div>
-                      <label className="text-text-secondary block mb-1">
+                      <label htmlFor="metodo_valor" className="text-xs font-semibold text-[var(--ink-2)] block mb-1.5">
                         Número de cuenta, teléfono, correo o enlace *
                       </label>
                       <input
+                        id="metodo_valor"
                         type="text"
                         value={newMethod.account_value}
-                        onChange={(e) =>
-                          setNewMethod({ ...newMethod, account_value: e.target.value })
-                        }
+                        onChange={(e) => setNewMethod({ ...newMethod, account_value: e.target.value })}
                         placeholder="Dato exacto para recibir la donación"
-                        className="w-full px-3 py-2 rounded-xl glass-surface border border-glass-tint text-text-primary outline-none font-mono"
+                        maxLength={200}
+                        className="w-full px-3.5 py-3 rounded-xl bg-[var(--field)] border border-[var(--line)] text-[var(--ink)] placeholder-[var(--ink-3)] outline-none focus:border-[var(--accent)] font-mono"
                       />
                     </div>
 
                     <div>
-                      <label className="text-text-secondary block mb-1">Detalles opcionales</label>
+                      <label htmlFor="metodo_detalles" className="text-xs font-semibold text-[var(--ink-2)] block mb-1.5">
+                        Detalles (opcional)
+                      </label>
                       <input
+                        id="metodo_detalles"
                         type="text"
                         value={newMethod.details}
                         onChange={(e) => setNewMethod({ ...newMethod, details: e.target.value })}
-                        placeholder="Ej: Cédula para transferencias, código SWIFT, etc."
-                        className="w-full px-3 py-2 rounded-xl glass-surface border border-glass-tint text-text-primary outline-none"
+                        placeholder="Tipo de cuenta, código SWIFT…"
+                        maxLength={200}
+                        className="w-full px-3.5 py-3 rounded-xl bg-[var(--field)] border border-[var(--line)] text-[var(--ink)] placeholder-[var(--ink-3)] outline-none focus:border-[var(--accent)]"
                       />
                     </div>
 
-                    <label className="flex items-center gap-2 cursor-pointer pt-2">
+                    <label className="flex items-center gap-2.5 cursor-pointer pt-1">
                       <input
                         type="checkbox"
                         checked={saveInProfile}
                         onChange={(e) => setSaveInProfile(e.target.checked)}
-                        className="rounded accent-[var(--accent)] cursor-pointer"
+                        className="h-4 w-4 rounded accent-[var(--accent)] cursor-pointer"
                       />
-                      <span className="text-xs text-text-primary font-medium">
-                        Guardarlo también en mi perfil
-                      </span>
+                      <span className="text-xs text-[var(--ink)] font-medium">Guardarlo también en mi perfil</span>
                     </label>
                   </div>
 
-                  <div className="flex justify-end gap-2 pt-2">
+                  <div className="flex flex-col-reverse sm:flex-row sm:justify-end gap-2 pt-2">
                     <button
                       type="button"
                       onClick={() => setShowMethodModal(false)}
-                      className="px-4 py-2 rounded-xl glass-surface text-text-secondary text-xs font-semibold"
+                      disabled={guardandoMetodo}
+                      className="px-4 py-3 sm:py-2.5 rounded-xl border border-[var(--line)] bg-[var(--hover)] text-[var(--ink-2)] text-sm font-semibold cursor-pointer disabled:opacity-50"
                     >
                       Cancelar
                     </button>
                     <button
                       type="button"
                       onClick={handleAddDonationMethod}
-                      className="px-4 py-2 rounded-xl bg-accent text-white text-xs font-semibold hover:bg-accent/90"
+                      disabled={guardandoMetodo}
+                      aria-busy={guardandoMetodo}
+                      className="inline-flex items-center justify-center gap-2 px-5 py-3 sm:py-2.5 rounded-xl bg-[var(--cta)] text-white text-sm font-semibold hover:brightness-110 cursor-pointer disabled:opacity-70"
                     >
-                      Guardar método
+                      {guardandoMetodo && <IconoCargando size={15} className="animate-spin" />}
+                      {guardandoMetodo ? "Guardando…" : "Guardar método"}
                     </button>
                   </div>
                 </div>
@@ -2227,17 +2424,11 @@ function NuevaCausaContent({
                 </p>
 
                 <div className="flex flex-col sm:flex-row gap-2">
-                  <select
+                  <SelectorIndicativo
                     value={contactCountryCode}
-                    onChange={(e) => setContactCountryCode(e.target.value)}
-                    className="w-full sm:w-48 px-3 py-2.5 rounded-xl glass-surface border border-glass-tint text-xs text-text-primary outline-none"
-                  >
-                    {PHONE_COUNTRIES.map((c) => (
-                      <option key={c.code} value={c.code}>
-                        {c.name} ({c.dial})
-                      </option>
-                    ))}
-                  </select>
+                    onChange={setContactCountryCode}
+                    className="py-2.5 self-start sm:self-auto"
+                  />
                   <input
                     type="tel"
                     placeholder="Número de teléfono móvil"
@@ -2246,7 +2437,7 @@ function NuevaCausaContent({
                       setContactPhone(e.target.value);
                       setFieldErrors((prev) => ({ ...prev, phone: "" }));
                     }}
-                    className="flex-1 px-3 py-2.5 rounded-xl glass-surface border border-glass-tint text-xs text-text-primary outline-none font-mono"
+                    className="w-full sm:w-0 flex-1 px-3 py-2.5 rounded-xl glass-surface border border-[var(--line)] text-sm text-text-primary outline-none focus:border-[var(--accent)] font-mono"
                   />
                 </div>
 
@@ -2320,7 +2511,7 @@ function NuevaCausaContent({
         )}
 
         {/* Wizard Navigation Footer */}
-        <div className="mt-8 pt-6 border-t border-[var(--line)] flex items-center justify-between">
+        <div className="mt-8 pt-6 border-t border-[var(--line)] flex items-center justify-between max-md:sticky max-md:bottom-[calc(5.75rem+env(safe-area-inset-bottom))] max-md:z-20 max-md:mx-[-0.5rem] max-md:rounded-2xl max-md:border max-md:bg-[var(--surface-solid)] max-md:p-2.5 max-md:shadow-lg">
           <button
             type="button"
             onClick={() => irAPaso(Math.max(1, currentStep - 1))}

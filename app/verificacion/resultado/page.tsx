@@ -2,6 +2,7 @@ import React from "react";
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { ResultadoClient } from "./ResultadoClient";
+import { destinoSeguro } from "@/lib/utils/destino";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
@@ -12,7 +13,7 @@ interface PageProps {
 
 export default async function ResultadoPage({ searchParams }: PageProps) {
   const params = await searchParams;
-  const next = params.next || "/perfil";
+  const next = destinoSeguro(params.next, "/perfil");
 
   const supabase = await createClient();
   const {

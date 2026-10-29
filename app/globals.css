@@ -329,3 +329,70 @@ select optgroup {
   background-color: var(--surface-solid);
   color: var(--ink);
 }
+
+/* ───────────── Barra de carga entre páginas ───────────── */
+.barra-navegacion {
+  width: 100%;
+  transform-origin: left;
+  animation: barra-avanza 8s cubic-bezier(0.1, 0.7, 0.2, 1) forwards;
+}
+.barra-navegacion--fin {
+  animation: barra-termina 280ms ease-out forwards;
+}
+@keyframes barra-avanza {
+  0% { transform: scaleX(0); }
+  15% { transform: scaleX(0.45); }
+  100% { transform: scaleX(0.92); }
+}
+@keyframes barra-termina {
+  0% { transform: scaleX(0.92); opacity: 1; }
+  60% { transform: scaleX(1); opacity: 1; }
+  100% { transform: scaleX(1); opacity: 0; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .barra-navegacion { animation: none; transform: scaleX(0.6); }
+}
+
+/* ───────────── Superficies heredadas (crear causa, detalle, comentarios) ─────────────
+   Antes no existían: los modales quedaban transparentes y se veían borrosos. */
+@layer components {
+  .glass-card {
+    background-color: var(--surface-solid);
+    box-shadow: var(--shadow);
+  }
+  .glass-surface {
+    background-color: var(--field);
+  }
+}
+
+/* Botón ocupado: el cursor avisa que algo está pasando */
+button[aria-busy="true"] { cursor: progress; }
+@layer components {
+  .glass-tint {
+    background-color: var(--hover);
+  }
+}
+
+/* En pantallas táctiles, iOS hace zoom si un campo tiene letra menor a 16 px.
+   Esta regla va fuera de las capas de Tailwind, así que gana sobre text-xs/text-sm. */
+@media (pointer: coarse) {
+  input:not([type="checkbox"]):not([type="radio"]):not([type="range"]):not([type="file"]),
+  select,
+  textarea {
+    font-size: 16px;
+  }
+}
+
+/* Los campos dentro de filas flex pueden encogerse (si no, empujan la página hacia los lados en móvil) */
+input,
+select,
+textarea {
+  min-width: 0;
+}
+
+/* Las columnas de una grilla no se estiran por un selector con nombres largos de países */
+@layer base {
+  .grid > * {
+    min-width: 0;
+  }
+}

@@ -6,10 +6,11 @@ import Link from "next/link";
 import { Glass } from "@/components/ui/Glass";
 import { createClient } from "@/lib/supabase/client";
 import { IconoAlerta } from "@/components/iconos";
+import { destinoSeguro } from "@/lib/utils/destino";
 
 export function EntrarClient() {
   const searchParams = useSearchParams();
-  const next = searchParams.get("next") || "/";
+  const next = destinoSeguro(searchParams.get("next"), "/");
   const errorParam = searchParams.get("error");
   const [loading, setLoading] = useState(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(

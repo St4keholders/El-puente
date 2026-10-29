@@ -79,7 +79,7 @@ export function PerfilLayoutClient({
   };
 
   return (
-    <div className="relative min-h-screen w-full pt-24 sm:pt-28 lg:pt-32 pb-24">
+    <div className="relative min-h-screen w-full pt-24 sm:pt-28 lg:pt-32 pb-[calc(7.5rem+env(safe-area-inset-bottom))] md:pb-24">
       <div className="relative z-[2] w-full max-w-[1280px] mx-auto px-4 sm:px-8 py-2 sm:py-4">
         {/* Barra de pestañas horizontal en móvil (< 1024px) */}
         <div className="lg:hidden mb-6 -mx-4 px-4 overflow-x-auto scrollbar-none border-b border-[var(--line)] bg-[color-mix(in_oklab,var(--bg)_88%,transparent)] backdrop-blur-md sticky top-16 z-20 py-2">

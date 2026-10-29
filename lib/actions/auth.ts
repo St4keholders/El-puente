@@ -32,6 +32,7 @@ export async function copyGoogleAvatarToStorage(googleAvatarUrl?: string | null)
     const res = await fetch(googleAvatarUrl, {
       referrerPolicy: "no-referrer",
       cache: "no-store",
+      redirect: "error",
     });
 
     if (!res.ok) {
@@ -45,7 +46,8 @@ export async function copyGoogleAvatarToStorage(googleAvatarUrl?: string | null)
     if (arrayBuffer.byteLength > 2 * 1024 * 1024) return null;
 
     const buffer = Buffer.from(arrayBuffer);
-    const contentType = res.headers.get("content-type") || "image/jpeg";
+    const contentType = (res.headers.get("content-type") || "image/jpeg").split(";")[0].trim();
+    if (!["image/jpeg", "image/png", "image/webp"].includes(contentType)) return null;
     const ext = contentType.includes("png") ? "png" : contentType.includes("webp") ? "webp" : "jpg";
     const storagePath = `${uid}/avatar-${Date.now()}.${ext}`;
 
@@ -153,15 +155,34 @@ export async function deleteUserAccount(confirmPublicId: string): Promise<{ succ
       { auth: { autoRefreshToken: false, persistSession: false } }
     );
 
-    // Borrar archivos en buckets
+    // Borrar todos los archivos de la persona, incluidas las subcarpetas
+    // ({uid}/{causa}/…, {uid}/comentarios/{id}/…). Antes solo se borraba el primer nivel.
     const buckets = ["avatares", "causas-imagenes", "causas-videos"];
     for (const b of buckets) {
       try {
-        const { data: files } = await admin.storage.from(b).list(uid);
-        if (files && files.length > 0) {
-          await admin.storage
-            .from(b)
-            .remove(files.map((f) => `${uid}/${f.name}`));
+        const rutas: string[] = [];
+        const pendientes = [uid];
+        while (pendientes.length > 0 && rutas.length < 5000) {
+          const carpeta = pendientes.pop()!;
+          for (let offset = 0; ; offset += 100) {
+            const { data: items, error: listErr } = await admin.storage
+              .from(b)
+              .list(carpeta, { limit: 100, offset });
+            if (listErr) {
+              console.warn(`deleteUserAccount listar ${b}/${carpeta}:`, listErr.message);
+              break;
+            }
+            for (const item of items || []) {
+              // Las carpetas no tienen id; los archivos sí
+              if (item.id) rutas.push(`${carpeta}/${item.name}`);
+              else pendientes.push(`${carpeta}/${item.name}`);
+            }
+            if (!items || items.length < 100) break;
+          }
+        }
+        for (let i = 0; i < rutas.length; i += 100) {
+          const { error: rmErr } = await admin.storage.from(b).remove(rutas.slice(i, i + 100));
+          if (rmErr) console.warn(`deleteUserAccount borrar en ${b}:`, rmErr.message);
         }
       } catch (err) {
         console.warn(`Error deleting files in bucket ${b}:`, err);
