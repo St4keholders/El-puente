@@ -572,6 +572,7 @@ export type Database = {
           decline_reason: string | null
           document_country: string | null
           document_hash: string | null
+          document_last4: string | null
           expires_at: string | null
           id: string
           level: number
@@ -582,12 +583,15 @@ export type Database = {
           user_id: string
           verified_at: string | null
           verified_full_name: string | null
+          verified_given_names: string | null
+          verified_last_names: string | null
         }
         Insert: {
           created_at?: string
           decline_reason?: string | null
           document_country?: string | null
           document_hash?: string | null
+          document_last4?: string | null
           expires_at?: string | null
           id?: string
           level?: number
@@ -598,12 +602,15 @@ export type Database = {
           user_id: string
           verified_at?: string | null
           verified_full_name?: string | null
+          verified_given_names?: string | null
+          verified_last_names?: string | null
         }
         Update: {
           created_at?: string
           decline_reason?: string | null
           document_country?: string | null
           document_hash?: string | null
+          document_last4?: string | null
           expires_at?: string | null
           id?: string
           level?: number
@@ -614,6 +621,8 @@ export type Database = {
           user_id?: string
           verified_at?: string | null
           verified_full_name?: string | null
+          verified_given_names?: string | null
+          verified_last_names?: string | null
         }
         Relationships: [
           {
@@ -931,6 +940,27 @@ export type Database = {
           },
         ]
       }
+      ubicacion_conexion: {
+        Row: {
+          desde: string
+          pais: string
+          user_id: string
+          visto_en: string
+        }
+        Insert: {
+          desde?: string
+          pais: string
+          user_id: string
+          visto_en?: string
+        }
+        Update: {
+          desde?: string
+          pais?: string
+          user_id?: string
+          visto_en?: string
+        }
+        Relationships: []
+      }
     }
     Views: {
       country_cause_counts: {
@@ -1048,6 +1078,10 @@ export type Database = {
           p_user_id: string
         }
         Returns: Json
+      }
+      registrar_conexion: {
+        Args: { p_pais: string; p_user_id: string }
+        Returns: { desde: string; pais: string }[]
       }
       recent_closures: {
         Args: { p_days?: number; p_limit?: number }

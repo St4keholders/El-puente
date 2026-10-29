@@ -15,6 +15,7 @@ import {
   IconoCorazon,
   IconoUsuarios,
   IconoCheckCirculo,
+  IconoCargando,
 } from "@/components/iconos";
 import { Glass } from "@/components/ui/Glass";
 import { CauseCard, CauseCardProps } from "@/components/feed/CauseCard";
@@ -22,6 +23,8 @@ import { createClient } from "@/lib/supabase/client";
 import { getCountryName } from "@/lib/geo/countries";
 import { toggleFollowAction } from "@/app/actions/social";
 import { urlDeAvatar } from "@/lib/media";
+import { avisar } from "@/components/ui/Avisos";
+import { avisarNavegacion } from "@/components/layout/BarraNavegacion";
 
 
 interface UserProfileViewProps {
@@ -77,6 +80,7 @@ export function UserProfileView({
 
   const handleToggleFollow = async () => {
     if (!currentUserId) {
+      avisarNavegacion();
       router.push(`/entrar?next=/u/${profile.public_id}`);
       return;
     }
@@ -101,16 +105,22 @@ export function UserProfileView({
     }
   };
 
+  const [borrandoId, setBorrandoId] = useState<string | null>(null);
   const handleDeleteDraft = async (draftId: string) => {
-    if (!confirm("¿Seguro que deseas eliminar este borrador?")) return;
+    if (borrandoId || !confirm("¿Seguro que deseas eliminar este borrador?")) return;
 
-    const { error } = await supabase.from("causes").delete().eq("id", draftId);
-    if (error) {
-      console.error("Eliminar borrador:", error.code, error.message);
-      alert(`No pudimos eliminar el borrador: ${error.message}`);
-      return;
+    setBorrandoId(draftId);
+    try {
+      const { error } = await supabase.from("causes").delete().eq("id", draftId);
+      if (error) {
+        console.error("Eliminar borrador:", error.code, error.message);
+        avisar("No pudimos eliminar el borrador. Inténtalo de nuevo.");
+        return;
+      }
+      setCausesList((prev) => prev.filter((c) => c.id !== draftId));
+    } finally {
+      setBorrandoId(null);
     }
-    setCausesList((prev) => prev.filter((c) => c.id !== draftId));
   };
 
   return (
@@ -352,10 +362,16 @@ export function UserProfileView({
                 <div className="flex items-center gap-2 self-end sm:self-center">
                   <button
                     onClick={() => handleDeleteDraft(draft.id)}
+                    disabled={borrandoId === draft.id}
                     className="p-2 rounded-full text-text-secondary hover:text-red-400 hover:bg-glass-tint transition-colors"
                     title="Eliminar borrador"
+                    aria-label="Eliminar borrador"
                   >
-                    <IconoBasura size={16} />
+                    {borrandoId === draft.id ? (
+                      <IconoCargando size={16} className="animate-spin" />
+                    ) : (
+                      <IconoBasura size={16} />
+                    )}
                   </button>
 
                   <Link

@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { Glass } from "@/components/ui/Glass";
 import { crearAvisoAction } from "@/app/actions/apoyos";
 import { IconoX, IconoCargando, IconoCheckCirculo, IconoAlerta, IconoInfo } from "@/components/iconos";
+import { avisarNavegacion } from "@/components/layout/BarraNavegacion";
 
 interface ModalAvisoDonacionProps {
   isOpen: boolean;
@@ -82,7 +83,7 @@ export function ModalAvisoDonacion({
       });
       if (!res.success) {
         setErrorMsg(res.error);
-        if ("redirect" in res && res.redirect) router.push(res.redirect);
+        if ("redirect" in res && res.redirect) { avisarNavegacion(); router.push(res.redirect); }
         return;
       }
       setSent(true);

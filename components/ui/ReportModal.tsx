@@ -5,6 +5,7 @@ import { IconoAlerta, IconoCheckCirculo, IconoCargando, IconoCerrar } from "@/co
 import { createClient } from "@/lib/supabase/client";
 import { useUser } from "@/lib/hooks/useUser";
 import type { Database } from "@/lib/database.types";
+import { avisar } from "@/components/ui/Avisos";
 
 type ReportReason = Database["public"]["Enums"]["report_reason"];
 
@@ -37,7 +38,7 @@ export function ReportModal({ isOpen, onClose, causeId, commentId }: ReportModal
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!user) {
-      alert("Debes iniciar sesión para enviar un reporte.");
+      avisar("Debes iniciar sesión para enviar un reporte.");
       return;
     }
     setIsSubmitting(true);
@@ -58,7 +59,7 @@ export function ReportModal({ isOpen, onClose, causeId, commentId }: ReportModal
         onClose();
       }, 2000);
     } catch (err: any) {
-      alert("Error al enviar reporte: " + err.message);
+      avisar("Error al enviar reporte: " + err.message);
     } finally {
       setIsSubmitting(false);
     }

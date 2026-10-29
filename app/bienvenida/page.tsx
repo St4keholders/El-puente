@@ -1,8 +1,10 @@
 import React from "react";
 import { redirect } from "next/navigation";
+import { headers } from "next/headers";
 import { createClient } from "@/lib/supabase/server";
 import { urlDeAvatar } from "@/lib/media";
 import { BienvenidaForm } from "./BienvenidaForm";
+import { destinoSeguro } from "@/lib/utils/destino";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
@@ -13,7 +15,7 @@ interface BienvenidaPageProps {
 
 export default async function BienvenidaPage({ searchParams }: BienvenidaPageProps) {
   const params = await searchParams;
-  const next = params.next || "/";
+  const next = destinoSeguro(params.next, "/");
 
   const supabase = await createClient();
   const {
@@ -41,7 +43,7 @@ export default async function BienvenidaPage({ searchParams }: BienvenidaPagePro
 
   if (profileRes.error) {
     console.error("/bienvenida profiles:", profileRes.error.code, profileRes.error.message);
-    throw new Error(`No pudimos leer tu perfil: ${profileRes.error.message}`);
+    throw new Error("No pudimos leer tu perfil. Recarga la página.");
   }
 
   const profile = profileRes.data;
@@ -61,12 +63,17 @@ export default async function BienvenidaPage({ searchParams }: BienvenidaPagePro
   const avatarUrl =
     urlDeAvatar(profile?.avatar_url) || meta.avatar_url || meta.picture || null;
 
+  // País desde donde se conecta: sirve para dejar preseleccionados país e indicativo
+  const paisConexion = ((await headers()).get("x-vercel-ip-country") || "").toUpperCase();
+  const paisSugerido = /^[A-Z]{2}$/.test(paisConexion) ? paisConexion : "";
+
   return (
     <BienvenidaForm
+      paisSugerido={paisSugerido}
       userEmail={user.email || ""}
       initialName={initialName}
       publicId={profile?.public_id || null}
-      initialCountry={profile?.country_code || ""}
+      initialCountry={profile?.country_code || paisSugerido}
       initialCity={profile?.city || ""}
       avatarUrl={avatarUrl}
       next={next}

@@ -9,7 +9,7 @@ export function Footer() {
   // la página no se desplaza y arrastrar el planeta no mueve la página.
   const enPortada = usePathname() === "/";
   return (
-    <footer className={`${enPortada ? "hidden md:block" : ""} mt-auto border-t border-glass-tint/40 py-10 px-4 text-xs text-text-secondary`}>
+    <footer className={`${enPortada ? "hidden md:block" : ""} mt-auto border-t border-glass-tint/40 pt-10 pb-[calc(7rem+env(safe-area-inset-bottom))] md:pb-10 px-4 text-xs text-text-secondary`}>
       <div className="max-w-6xl mx-auto flex flex-col md:flex-row items-center justify-between gap-6">
         <div className="flex flex-col items-center md:items-start gap-1">
           <div className="flex items-center gap-2">

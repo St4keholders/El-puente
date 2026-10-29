@@ -29,9 +29,26 @@ export async function updateProfileAction(data: UpdateProfileInput) {
     return { success: false, error: "Tu sesión expiró. Inicia sesión de nuevo." };
   }
 
-  const cleanName = (data.fullName || "").trim();
-  if (cleanName.length < 2) {
-    return { success: false, error: "El nombre completo debe tener al menos 2 caracteres." };
+  const { data: actual, error: leerErr } = await supabase
+    .from("profiles")
+    .select("identity_verified")
+    .eq("id", user.id)
+    .maybeSingle();
+  if (leerErr) {
+    console.error("updateProfileAction leer perfil:", leerErr.code, leerErr.message);
+    return { success: false, error: "No pudimos leer tu perfil. Inténtalo de nuevo." };
+  }
+  // Con la identidad verificada el nombre sale del documento y no se puede cambiar.
+  const nombreFijo = Boolean(actual?.identity_verified);
+
+  const cleanName = (data.fullName || "").replace(/\s+/g, " ").trim();
+  if (!nombreFijo && (cleanName.length < 2 || cleanName.length > 80)) {
+    return { success: false, error: "Escribe tu nombre completo (entre 2 y 80 caracteres)." };
+  }
+
+  const cleanPhone = (data.phone || "").trim();
+  if (data.phone !== undefined && !/^\+[1-9][0-9]{7,14}$/.test(cleanPhone)) {
+    return { success: false, error: "Tu número de contacto es obligatorio. Revisa que esté completo." };
   }
 
   // Sanitize country code (must match ^[A-Z]{2}$ or null)
@@ -44,10 +61,10 @@ export async function updateProfileAction(data: UpdateProfileInput) {
   const { data: updatedProfile, error: profErr } = await supabase
     .from("profiles")
     .update({
-      full_name: cleanName,
-      bio: data.bio ? data.bio.trim() : null,
+      ...(nombreFijo ? {} : { full_name: cleanName }),
+      bio: data.bio ? data.bio.trim().slice(0, 280) : null,
       country_code: cleanCountry,
-      city: data.city ? data.city.trim() : null,
+      city: data.city ? data.city.trim().slice(0, 80) : null,
     })
     .eq("id", user.id)
     .select("public_id")
@@ -55,23 +72,18 @@ export async function updateProfileAction(data: UpdateProfileInput) {
 
   if (profErr) {
     console.error("updateProfileAction profiles:", profErr.code, profErr.message);
-    return { success: false, error: `No pudimos guardar tu perfil: ${profErr.message}` };
+    return { success: false, error: "No pudimos guardar tu perfil. Inténtalo de nuevo." };
   }
 
   // 2. Actualizar o crear profile_private si se proporcionó teléfono
   if (data.phone !== undefined) {
-    let cleanPhone: string | null = null;
-    if (data.phone && /^\+[1-9][0-9]{7,14}$/.test(data.phone.trim())) {
-      cleanPhone = data.phone.trim();
-    }
-
     const { error: privErr } = await supabase
       .from("profile_private")
       .upsert({ id: user.id, phone: cleanPhone }, { onConflict: "id" });
 
     if (privErr) {
       console.error("updateProfileAction profile_private:", privErr.code, privErr.message);
-      return { success: false, error: `No pudimos guardar tu teléfono: ${privErr.message}` };
+      return { success: false, error: "No pudimos guardar tu teléfono. Inténtalo de nuevo." };
     }
   }
 

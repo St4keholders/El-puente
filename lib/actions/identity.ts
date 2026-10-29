@@ -86,8 +86,10 @@ export async function consultarEstadoVerificacionAction() {
     return { success: false, error: "SIN_SESION" };
   }
 
+  // Con la clave del servidor: el id de sesión de Didit no es legible desde el cliente.
+  const admin = createAdminClient();
   const leerUltima = () =>
-    supabase
+    admin
       .from("identity_verifications")
       .select("status, verified_at, expires_at, decline_reason, provider_session_id")
       .eq("user_id", user.id)

@@ -1,8 +1,6 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { createClient } from "@/lib/supabase/server";
-
-const destinoSeguro = (n: string | null) =>
-  n && n.startsWith("/") && !n.startsWith("//") ? n : "/";
+import { destinoSeguro } from "@/lib/utils/destino";
 
 export async function GET(request: NextRequest) {
   const url = new URL(request.url);

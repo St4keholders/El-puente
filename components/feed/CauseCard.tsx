@@ -19,6 +19,7 @@ import { getCountryName } from "@/lib/geo/countries";
 import { toggleFollowAction } from "@/app/actions/social";
 import { MarcoImagen } from "@/components/media/MarcoImagen";
 import { urlDeAvatar } from "@/lib/media";
+import { avisar } from "@/components/ui/Avisos";
 
 export interface CauseMediaItem {
   id?: string;
@@ -196,7 +197,7 @@ export function CauseCard({
       setTimeout(() => setCopiedLink(false), 2000);
     } catch (err: any) {
       console.error("No se pudo copiar el enlace:", err?.name, err?.message);
-      alert("No pudimos copiar el enlace.");
+      avisar("No pudimos copiar el enlace.");
     }
   };
 

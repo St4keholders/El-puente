@@ -13,6 +13,7 @@ import {
   IconoX,
   IconoOjo,
   IconoOjoTachado,
+  IconoCargando,
 } from "@/components/iconos";
 import {
   createPaymentMethodAction,
@@ -70,6 +71,7 @@ export function MetodosPagoClient({
 
   // Diálogo de eliminación
   const [deletingId, setDeletingId] = useState<string | null>(null);
+  const [eliminando, setEliminando] = useState(false);
 
   const toggleVisibility = (id: string) => {
     setVisibleValues((prev) => ({ ...prev, [id]: !prev[id] }));
@@ -145,6 +147,8 @@ export function MetodosPagoClient({
   };
 
   const handleDelete = async (id: string) => {
+    if (eliminando) return;
+    setEliminando(true);
     try {
       const res = await deletePaymentMethodAction(id);
       if (res.success) {
@@ -159,6 +163,8 @@ export function MetodosPagoClient({
     } catch (err: any) {
       console.error("Eliminar método:", err?.code, err?.message);
       setErrorMsg("No pudimos eliminar el método.");
+    } finally {
+      setEliminando(false);
     }
   };
 
@@ -418,7 +424,7 @@ export function MetodosPagoClient({
         >
           <Glass
             variant="panel"
-            className="relative w-full max-w-md p-6 sm:p-8 rounded-3xl shadow-2xl border border-[var(--line)]"
+            className="relative w-full max-w-md max-h-[92dvh] overflow-y-auto p-6 sm:p-8 rounded-3xl shadow-2xl border border-[var(--line)] bg-[var(--surface-solid)]"
           >
             <div className="flex items-center justify-between pb-4 border-b border-[var(--line)] mb-5">
               <h2 className="text-lg font-bold text-[var(--ink)]">
@@ -541,9 +547,11 @@ export function MetodosPagoClient({
                 <button
                   type="submit"
                   disabled={saving}
-                  className="py-2 px-4 rounded-xl bg-[var(--cta)] hover:bg-[var(--accent)] text-white text-xs font-semibold tracking-wide shadow-md transition-all cursor-pointer disabled:opacity-50"
+                  aria-busy={saving}
+                  className="inline-flex items-center gap-2 py-2 px-4 rounded-xl bg-[var(--cta)] hover:bg-[var(--accent)] text-white text-xs font-semibold tracking-wide shadow-md transition-all cursor-pointer disabled:opacity-70"
                 >
-                  {saving ? "Guardando..." : editingMethod ? "Guardar cambios" : "Agregar método"}
+                  {saving && <IconoCargando size={14} className="animate-spin" />}
+                  {saving ? "Guardando…" : editingMethod ? "Guardar cambios" : "Agregar método"}
                 </button>
               </div>
             </form>
@@ -560,7 +568,7 @@ export function MetodosPagoClient({
         >
           <Glass
             variant="panel"
-            className="w-full max-w-sm p-6 rounded-3xl shadow-2xl border border-[var(--line)] text-center space-y-4"
+            className="w-full max-w-sm p-6 rounded-3xl shadow-2xl border border-[var(--line)] bg-[var(--surface-solid)] text-center space-y-4"
           >
             <div className="mx-auto w-12 h-12 rounded-full bg-rose-500/10 text-rose-500 flex items-center justify-center">
               <IconoBorrar size={22} />
@@ -577,6 +585,7 @@ export function MetodosPagoClient({
               <button
                 type="button"
                 onClick={() => setDeletingId(null)}
+                disabled={eliminando}
                 className="py-2 px-4 rounded-xl border border-[var(--line)] text-xs font-semibold text-[var(--ink-2)] hover:bg-[var(--hover)] transition-colors cursor-pointer"
               >
                 Conservar
@@ -585,9 +594,12 @@ export function MetodosPagoClient({
               <button
                 type="button"
                 onClick={() => handleDelete(deletingId)}
-                className="py-2 px-4 rounded-xl bg-rose-600 hover:bg-rose-500 text-white text-xs font-semibold tracking-wide shadow-md transition-all cursor-pointer"
+                disabled={eliminando}
+                aria-busy={eliminando}
+                className="inline-flex items-center gap-2 py-2 px-4 rounded-xl bg-rose-600 hover:bg-rose-500 text-white text-xs font-semibold tracking-wide shadow-md transition-all cursor-pointer disabled:opacity-70"
               >
-                Eliminar método
+                {eliminando && <IconoCargando size={14} className="animate-spin" />}
+                {eliminando ? "Eliminando…" : "Eliminar método"}
               </button>
             </div>
           </Glass>

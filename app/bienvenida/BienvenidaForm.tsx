@@ -3,10 +3,12 @@
 import React, { useState } from "react";
 import Link from "next/link";
 import { Glass } from "@/components/ui/Glass";
-import { IconoCargando, IconoAlerta } from "@/components/iconos";
+import { IconoCargando, IconoAlerta, IconoCheck } from "@/components/iconos";
 import { parsePhoneNumber, CountryCode } from "libphonenumber-js";
 import { getAllCountries } from "@/lib/geo/countries";
+import { paisTelefonoValido } from "@/lib/geo/telefonos";
 import { completeOnboardingAction } from "./actions";
+import { SelectorIndicativo } from "@/components/ui/SelectorIndicativo";
 
 interface BienvenidaFormProps {
   userEmail: string;
@@ -16,26 +18,9 @@ interface BienvenidaFormProps {
   initialCity: string;
   avatarUrl: string | null;
   next: string;
+  paisSugerido?: string;
 }
 
-const PHONE_COUNTRIES = [
-  { code: "CO", name: "Colombia", dial: "+57" },
-  { code: "MX", name: "México", dial: "+52" },
-  { code: "AR", name: "Argentina", dial: "+54" },
-  { code: "CL", name: "Chile", dial: "+56" },
-  { code: "PE", name: "Perú", dial: "+51" },
-  { code: "ES", name: "España", dial: "+34" },
-  { code: "US", name: "Estados Unidos", dial: "+1" },
-  { code: "VE", name: "Venezuela", dial: "+58" },
-  { code: "EC", name: "Ecuador", dial: "+593" },
-  { code: "BO", name: "Bolivia", dial: "+591" },
-  { code: "DO", name: "Rep. Dominicana", dial: "+1" },
-  { code: "GT", name: "Guatemala", dial: "+502" },
-  { code: "CR", name: "Costa Rica", dial: "+506" },
-  { code: "PA", name: "Panamá", dial: "+507" },
-  { code: "UY", name: "Uruguay", dial: "+598" },
-  { code: "PY", name: "Paraguay", dial: "+595" },
-];
 
 export function BienvenidaForm({
   userEmail,
@@ -45,12 +30,13 @@ export function BienvenidaForm({
   initialCity,
   avatarUrl,
   next,
+  paisSugerido,
 }: BienvenidaFormProps) {
   const [fullName, setFullName] = useState(initialName);
   const [countryCode, setCountryCode] = useState(initialCountry);
   const [city, setCity] = useState(initialCity);
   const countries = getAllCountries();
-  const [phoneCountry, setPhoneCountry] = useState("CO");
+  const [phoneCountry, setPhoneCountry] = useState<string>(paisTelefonoValido(paisSugerido || initialCountry));
   const [phoneNumber, setPhoneNumber] = useState("");
   const [acceptTerms, setAcceptTerms] = useState(false);
   const [submitting, setSubmitting] = useState(false);
@@ -85,7 +71,7 @@ export function BienvenidaForm({
     }
 
     if (!acceptTerms) {
-      setErrorMsg("Acepta los términos para continuar.");
+      setErrorMsg("Acepta los términos y la política de privacidad para continuar.");
       return;
     }
 
@@ -114,12 +100,20 @@ export function BienvenidaForm({
       window.location.href = res.redirect || "/";
     } catch (err: any) {
       console.error("Error submitting onboarding:", err?.code, err?.message);
-      setErrorMsg(`Ocurrió un error inesperado al guardar: ${err?.message || "error desconocido"}`);
+      setErrorMsg("No pudimos guardar. Revisa tu conexión e inténtalo de nuevo.");
       setSubmitting(false);
     }
   };
 
   const firstName = fullName.split(" ")[0] || "bienvenido";
+  const telefonoValido = (() => {
+    if (!phoneNumber.trim()) return false;
+    try {
+      return parsePhoneNumber(phoneNumber, phoneCountry as CountryCode)?.isValid() ?? false;
+    } catch {
+      return false;
+    }
+  })();
   const initials = (fullName || userEmail || "U")
     .split(/\s+/)
     .slice(0, 2)
@@ -183,12 +177,15 @@ export function BienvenidaForm({
               maxLength={80}
               value={fullName}
               onChange={(e) => setFullName(e.target.value)}
-              placeholder="Ej. Ana Pérez"
+              placeholder="Como aparece en tu documento"
+              autoComplete="name"
+              autoCapitalize="words"
               disabled={submitting}
               className="w-full rounded-2xl border border-[var(--line)] bg-[var(--field)] px-4 py-2.5 text-sm text-[var(--ink)] placeholder-[var(--ink-3)] focus:border-[var(--accent)] focus:outline-none focus:ring-1 focus:ring-[var(--accent)] transition-all"
             />
             <p className="mt-1 text-[11px] text-[var(--ink-3)]">
-              Así te verán quienes apoyen tu causa.
+              Cuando verifiques tu identidad lo tomaremos de tu documento y en público se verá tu
+              nombre con la inicial de tu apellido.
             </p>
             <p className="mt-1 text-[11px] text-[var(--ink-3)]">
               Tu ID será <strong className="font-mono text-[var(--ink)]">{publicId || "PNT-XXXXXX"}</strong>. Sirve para que te identifiquen y no se puede cambiar.
@@ -253,28 +250,31 @@ export function BienvenidaForm({
               </span>
             </div>
             <div className="flex gap-2">
-              <select
-                aria-label="Código de país"
+              <SelectorIndicativo
                 value={phoneCountry}
-                onChange={(e) => setPhoneCountry(e.target.value)}
+                onChange={setPhoneCountry}
                 disabled={submitting}
-                className="w-[125px] flex-shrink-0 rounded-2xl border border-[var(--line)] bg-[var(--field)] px-3 py-2.5 text-xs text-[var(--ink)] focus:border-[var(--accent)] focus:outline-none transition-all"
-              >
-                {PHONE_COUNTRIES.map((c) => (
-                  <option key={c.code} value={c.code}>
-                    {c.dial} ({c.code})
-                  </option>
-                ))}
-              </select>
-              <input
-                id="phoneNumber"
-                type="tel"
-                value={phoneNumber}
-                onChange={(e) => setPhoneNumber(e.target.value)}
-                placeholder="300 123 4567"
-                disabled={submitting}
-                className="flex-1 rounded-2xl border border-[var(--line)] bg-[var(--field)] px-4 py-2.5 text-sm text-[var(--ink)] placeholder-[var(--ink-3)] focus:border-[var(--accent)] focus:outline-none focus:ring-1 focus:ring-[var(--accent)] transition-all"
+                className="rounded-2xl"
               />
+              <div className="relative w-0 flex-1 min-w-0">
+                <input
+                  id="phoneNumber"
+                  type="tel"
+                  inputMode="tel"
+                  autoComplete="tel-national"
+                  value={phoneNumber}
+                  onChange={(e) => setPhoneNumber(e.target.value)}
+                  placeholder="300 123 4567"
+                  disabled={submitting}
+                  className="w-full rounded-2xl border border-[var(--line)] bg-[var(--field)] pl-4 pr-9 py-2.5 text-sm text-[var(--ink)] placeholder-[var(--ink-3)] focus:border-[var(--accent)] focus:outline-none focus:ring-1 focus:ring-[var(--accent)] transition-all"
+                />
+                {telefonoValido && (
+                  <IconoCheck
+                    size={16}
+                    className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-emerald-500"
+                  />
+                )}
+              </div>
             </div>
             <p className="mt-1 text-[11px] text-[var(--ink-3)]">
               Privado. Solo lo usamos para contactarte sobre tu cuenta o tus causas.
@@ -317,13 +317,14 @@ export function BienvenidaForm({
           <div className="pt-4">
             <button
               type="submit"
-              disabled={submitting || !acceptTerms}
+              disabled={submitting}
+              aria-busy={submitting}
               className="w-full flex items-center justify-center gap-2 rounded-2xl bg-[var(--accent)] py-3 px-4 text-sm font-semibold text-white shadow-lg shadow-[var(--accent)]/20 hover:brightness-110 active:scale-[0.99] disabled:opacity-50 disabled:cursor-not-allowed transition-all cursor-pointer"
             >
               {submitting ? (
                  <>
                    <IconoCargando size={16} className="animate-spin" />
-                   <span>Guardando...</span>
+                   <span>Guardando…</span>
                  </>
                ) : (
                  <span>Listo, entrar</span>

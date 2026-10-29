@@ -36,6 +36,8 @@ import { ModalRegistrarApoyo } from "@/components/cause/ModalRegistrarApoyo";
 import { ModalAvisoDonacion } from "@/components/cause/ModalAvisoDonacion";
 import { SeccionApoyos, type ApoyoConfirmado } from "@/components/apoyos/SeccionApoyos";
 import type { AvisoRecibido } from "@/components/apoyos/AvisoPendiente";
+import { avisar } from "@/components/ui/Avisos";
+import { avisarNavegacion } from "@/components/layout/BarraNavegacion";
 
 interface MediaItem {
   id: string;
@@ -207,7 +209,7 @@ export function CauseDetailView({
       setTimeout(() => setCopiedValue(null), 2000);
     } catch (err: any) {
       console.error("No se pudo copiar:", err?.name, err?.message);
-      alert("No pudimos copiar. Selecciona el texto y cópialo a mano.");
+      avisar("No pudimos copiar. Selecciona el texto y cópialo a mano.");
     }
   };
 
@@ -228,6 +230,7 @@ export function CauseDetailView({
 
   const handleToggleSave = async () => {
     if (!currentUserId) {
+      avisarNavegacion();
       router.push(`/entrar?next=/causa/${cause.id}`);
       return;
     }
@@ -240,7 +243,7 @@ export function CauseDetailView({
       if (error) {
         console.error("Guardar causa:", error.code, error.message);
         setIsSaved(!next); // revert on error
-        alert(`No pudimos ${next ? "guardar" : "quitar"} la causa: ${error.message}`);
+        avisar(`No pudimos ${next ? "guardar" : "quitar"} la causa. Inténtalo de nuevo.`);
       }
     } catch (err: any) {
       console.error("Guardar causa:", err?.code, err?.message);
@@ -250,6 +253,7 @@ export function CauseDetailView({
 
   const handleToggleFollow = async () => {
     if (!currentUserId) {
+      avisarNavegacion();
       router.push(`/entrar?next=/causa/${cause.id}`);
       return;
     }
@@ -259,7 +263,7 @@ export function CauseDetailView({
       const res = await toggleFollowAction(cause.author_id);
       if (!res.success) {
         setIsFollowing(!next); // revert on error
-        alert(res.error || "No pudimos actualizar el seguimiento.");
+        avisar(res.error || "No pudimos actualizar el seguimiento.");
       } else if (res.isFollowing !== undefined) {
         setIsFollowing(res.isFollowing);
       }
@@ -875,7 +879,7 @@ export function CauseDetailView({
         {includesInsumos && (
           <div className="space-y-4">
             <div className="flex items-center gap-2">
-              <span className="text-xl">📦</span>
+              <IconoArchivo size={20} className="text-accent" />
               <h3 className="font-bold text-xl text-text-primary">Cómo entregar insumos</h3>
             </div>
 

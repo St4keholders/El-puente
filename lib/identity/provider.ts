@@ -23,6 +23,9 @@ export interface ParsedVerificationEvent {
   userId: string;
   status: VerificationNormalizedStatus;
   verifiedFullName?: string;
+  /** Nombres y apellidos por separado, tal como los lee Didit del documento. */
+  givenNames?: string;
+  lastNames?: string;
   documentCountry?: string;
   documentNumber?: string;
   declineReason?: string;

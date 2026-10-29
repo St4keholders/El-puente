@@ -2,6 +2,7 @@
 
 import { createClient } from "@/lib/supabase/server";
 import type { Database } from "@/lib/database.types";
+import { estadoPaisPublicacion, registrarConexion, type EstadoPaisPublicacion } from "@/lib/identity/ubicacion";
 
 type CauseCategory = Database["public"]["Enums"]["cause_category"];
 type CollectionType = Database["public"]["Enums"]["collection_type"];
@@ -349,10 +350,30 @@ export async function guardarTelefonoAction(phoneE164: string): Promise<{ succes
   return { success: true };
 }
 
-/** Publica la causa. El trigger de la base valida los requisitos y lanza REQ_*. */
+/** En qué países puede publicar: el de su documento y, tras 6 h estable, el de su conexión. */
+export async function estadoPaisAction(): Promise<
+  { success: true; estado: EstadoPaisPublicacion } | Fallo
+> {
+  const { user } = await sesion();
+  if (!user) return { success: false, error: "Tu sesión expiró. Inicia sesión de nuevo.", code: "SIN_SESION" };
+  try {
+    return { success: true, estado: await estadoPaisPublicacion(user.id) };
+  } catch (err) {
+    console.error("[causa/nueva] estado país:", err);
+    return { success: false, error: "No pudimos confirmar tu ubicación." };
+  }
+}
+
+const CODIGOS_PUBLICAR =
+  /REQ_[A-Z_]+|UBICACION_EN_CONFIRMACION|UBICACION_SIN_CONFIRMAR|PAIS_NO_PERMITIDO|TRANSICION_INVALIDA|CAUSA_BLOQUEADA/;
+
+/** Publica la causa. Los triggers de la base validan los requisitos y lanzan REQ_* o reglas de país. */
 export async function publicarCausaAction(causeId: string): Promise<{ success: true } | Fallo> {
   const { supabase, user } = await sesion();
   if (!user) return { success: false, error: "Tu sesión expiró. Inicia sesión de nuevo.", code: "SIN_SESION" };
+
+  // La regla de país usa la conexión registrada en los últimos 30 minutos.
+  await registrarConexion(user.id);
 
   const { data, error } = await supabase
     .from("causes")
@@ -364,8 +385,12 @@ export async function publicarCausaAction(causeId: string): Promise<{ success: t
 
   if (error) {
     console.error("[causa/nueva] publicar:", error.code, error.message);
-    const req = error.message.match(/REQ_[A-Z_]+/)?.[0];
-    return { success: false, error: error.message, code: req || error.code };
+    const req = error.message.match(CODIGOS_PUBLICAR)?.[0];
+    return {
+      success: false,
+      error: req ? error.message : "No se pudo publicar la causa. Inténtalo de nuevo.",
+      code: req || error.code,
+    };
   }
   if (!data) {
     return { success: false, error: "No encontramos este borrador o no es tuyo.", code: "SIN_FILA" };
@@ -390,8 +415,30 @@ export async function uploadCauseMediaAction(formData: FormData): Promise<{
   const width = formData.get("width") ? parseInt(formData.get("width") as string, 10) : null;
   const height = formData.get("height") ? parseInt(formData.get("height") as string, 10) : null;
 
-  if (!causeId || !file) {
+  if (!causeId || !(file instanceof File) || file.size === 0) {
     return { success: false, error: "Archivo o causa no válidos." };
+  }
+  if (kind !== "imagen" && kind !== "video") {
+    return { success: false, error: "Tipo de archivo no válido." };
+  }
+  // El tipo y la extensión salen de una lista cerrada, nunca del nombre que manda el navegador.
+  const TIPOS: Record<string, string> =
+    kind === "video"
+      ? { "video/mp4": "mp4", "video/webm": "webm", "video/quicktime": "mov" }
+      : { "image/webp": "webp", "image/jpeg": "jpg", "image/png": "png" };
+  const extSegura = TIPOS[file.type];
+  if (!extSegura) {
+    return {
+      success: false,
+      error: kind === "video" ? "El video debe ser MP4, WebM o MOV." : "La foto debe ser WebP, JPG o PNG.",
+    };
+  }
+  const limite = kind === "video" ? 50 * 1024 * 1024 : 8 * 1024 * 1024;
+  if (file.size > limite) {
+    return { success: false, error: kind === "video" ? "El video supera los 50 MB." : "La foto supera los 8 MB." };
+  }
+  if (!Number.isFinite(position) || position < 0 || position > 50) {
+    return { success: false, error: "Posición no válida." };
   }
 
   // Verify cause ownership
@@ -410,23 +457,20 @@ export async function uploadCauseMediaAction(formData: FormData): Promise<{
   const isVideo = kind === "video";
   const bucket = isVideo ? "causas-videos" : "causas-imagenes";
   const fileUuid = crypto.randomUUID();
-  const rawName = file.name || (isVideo ? "video.mp4" : "imagen.webp");
-  const rawExt = rawName.includes(".") ? rawName.split(".").pop()?.toLowerCase() : null;
-  const ext = rawExt || (isVideo ? "mp4" : "webp");
-  const storagePath = `${user.id}/${causeId}/${fileUuid}.${ext}`;
+  const storagePath = `${user.id}/${causeId}/${fileUuid}.${extSegura}`;
 
   const buffer = Buffer.from(await file.arrayBuffer());
 
   const { error: uploadErr } = await supabase.storage
     .from(bucket)
     .upload(storagePath, buffer, {
-      contentType: file.type || (isVideo ? "video/mp4" : "image/webp"),
+      contentType: file.type,
       upsert: false,
     });
 
   if (uploadErr) {
     console.error("[causa/nueva] storage upload:", uploadErr.name, uploadErr.message);
-    return { success: false, error: `Error de almacenamiento: ${uploadErr.message}` };
+    return { success: false, error: "No se pudo subir el archivo. Inténtalo de nuevo." };
   }
 
   const { data: dbItem, error: dbErr } = await supabase
@@ -450,7 +494,7 @@ export async function uploadCauseMediaAction(formData: FormData): Promise<{
     console.error("[causa/nueva] cause_media insert:", dbErr.code, dbErr.message);
     const { error: cleanErr } = await supabase.storage.from(bucket).remove([storagePath]);
     if (cleanErr) console.error("[causa/nueva] limpiar archivo:", cleanErr.name, cleanErr.message);
-    return { success: false, error: `Error en base de datos: ${dbErr.message}` };
+    return { success: false, error: "No se pudo guardar el archivo en tu causa. Inténtalo de nuevo." };
   }
 
   return { success: true, mediaItem: dbItem };
