@@ -19,7 +19,6 @@ import {
   IconoEditar,
   IconoArchivo,
   IconoEstrellas,
-  IconoCandado,
   IconoMaximizar,
   IconoCerrar,
   IconoTarjeta,
@@ -775,20 +774,6 @@ export function CauseDetailView({
               <div className="p-6 rounded-3xl glass-card text-center text-text-secondary text-sm">
                 <p className="font-semibold text-text-primary">Esta causa ya no recibe donaciones.</p>
               </div>
-            ) : !currentUserId ? (
-              <div className="p-8 rounded-3xl glass-card border border-glass-tint text-center space-y-3">
-                <IconoCandado size={32} className="mx-auto text-accent opacity-80" />
-                <h4 className="font-bold text-base text-text-primary">Inicia sesión para ver cómo donar</h4>
-                <p className="text-xs text-text-secondary max-w-sm mx-auto">
-                  Para proteger los datos bancarios contra raspados automatizados, debes iniciar sesión.
-                </p>
-                <Link
-                  href={`/entrar?next=/causa/${cause.id}#donar`}
-                  className="inline-block px-6 py-2.5 rounded-full bg-accent text-white font-semibold text-xs hover:bg-accent/90 shadow-md shadow-accent/20"
-                >
-                  Iniciar sesión
-                </Link>
-              </div>
             ) : cause.is_example ? (
               <div className="p-5 rounded-2xl glass-card border border-amber-500/20 text-center text-sm text-text-secondary">
                 <p className="font-semibold text-text-primary">Aquí aparecerían tus métodos de pago.</p>
@@ -895,17 +880,6 @@ export function CauseDetailView({
               <div className="p-5 rounded-2xl glass-card border border-amber-500/20 text-center text-sm text-text-secondary">
                 <p className="font-semibold text-text-primary">Aquí aparecerían las instrucciones de entrega.</p>
                 <p className="text-xs mt-1">Esta es una causa de ejemplo.</p>
-              </div>
-            ) : !currentUserId ? (
-              <div className="p-6 rounded-3xl glass-card border border-glass-tint text-center space-y-2">
-                <IconoCandado size={28} className="mx-auto text-accent opacity-80" />
-                <p className="text-sm text-text-secondary">Inicia sesión para ver las instrucciones de entrega.</p>
-                <Link
-                  href={`/entrar?next=/causa/${cause.id}#donar`}
-                  className="inline-block px-5 py-2 rounded-full bg-accent text-white font-semibold text-xs hover:bg-accent/90"
-                >
-                  Iniciar sesión
-                </Link>
               </div>
             ) : cause.supplies_instructions ? (
               <div className="p-5 rounded-2xl glass-card border border-glass-tint">

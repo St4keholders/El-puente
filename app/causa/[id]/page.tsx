@@ -1,6 +1,7 @@
 import { Metadata } from "next";
 import { notFound } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
+import { createAdminClient } from "@/lib/supabase/admin";
 import { CauseDetailView } from "@/components/cause/CauseDetailView";
 import { cargarComentariosAction, contarComentariosAction } from "@/app/actions/comments";
 import mundoData from "@/lib/geo/mundo.json";
@@ -142,19 +143,28 @@ export default async function CauseDetailPage(props: CausePageProps) {
     notFound();
   }
 
-  // Métodos de donación: solo con sesión y en causas reales. Sin sesión ni se consulta
-  // (anon no tiene privilegios sobre la tabla) y la vista muestra "Inicia sesión".
+  // Métodos de donación: visibles para todos en causas activas reales.
+  // Con sesión se leen con los permisos de la persona; sin sesión el servidor los lee
+  // solo para esta causa (la tabla sigue cerrada a anon, así nadie puede descargarlas todas de golpe).
   let donationMethods: any[] = [];
   let donationMethodsError: string | null = null;
-  if (user && !cause.is_example) {
-    const { data: methods, error: methodsErr } = await supabase
-      .from("donation_methods")
-      .select("*")
-      .eq("cause_id", cause.id)
-      .order("position", { ascending: true });
+  if (!cause.is_example && (user || cause.status === "activa")) {
+    let cliente;
+    try {
+      cliente = user ? supabase : createAdminClient();
+    } catch (err) {
+      console.error("/causa donation_methods: cliente del servidor", err);
+    }
+    const { data: methods, error: methodsErr } = cliente
+      ? await cliente
+          .from("donation_methods")
+          .select("id, kind, provider, account_holder, account_value, details, position")
+          .eq("cause_id", cause.id)
+          .order("position", { ascending: true })
+      : { data: null, error: { code: "SIN_CLAVE", message: "Falta la clave del servidor" } };
     if (methodsErr) {
       console.error("/causa donation_methods:", methodsErr.code, methodsErr.message);
-      donationMethodsError = `No pudimos cargar los métodos de donación: ${methodsErr.message}`;
+      donationMethodsError = "No pudimos cargar los métodos de donación. Recarga la página.";
     } else {
       donationMethods = methods || [];
     }
