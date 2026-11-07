@@ -11,6 +11,7 @@ export const revalidate = 0;
 
 interface CausePageProps {
   params: Promise<{ id: string }>;
+  searchParams?: Promise<{ publicada?: string }>;
 }
 
 export async function generateMetadata(props: CausePageProps): Promise<Metadata> {
@@ -74,6 +75,7 @@ export async function generateMetadata(props: CausePageProps): Promise<Metadata>
 
 export default async function CauseDetailPage(props: CausePageProps) {
   const { id } = await props.params;
+  const recienPublicada = (await props.searchParams)?.publicada === "1";
   const supabase = await createClient();
 
   const {
@@ -274,6 +276,7 @@ export default async function CauseDetailPage(props: CausePageProps) {
         isSaved={isSaved}
         isFollowing={isFollowing}
         isOwner={Boolean(user && user.id === cause.author_id)}
+        recienPublicada={recienPublicada}
         currentUserId={user?.id || null}
         currentUser={user ? { id: user.id, email: user.email || "" } : null}
         currentUserProfile={currentUserProfile}

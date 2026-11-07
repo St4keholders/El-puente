@@ -5,8 +5,8 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 
 export function Footer() {
-  // En la portada en celular, el planeta ocupa toda la pantalla: sin pie de página
-  // la página no se desplaza y arrastrar el planeta no mueve la página.
+  // En la portada en celular, debajo del planeta va el scroll infinito de causas:
+  // el pie no se alcanzaría nunca, así que Términos y Privacidad están en el menú ☰.
   const enPortada = usePathname() === "/";
   return (
     <footer className={`${enPortada ? "hidden md:block" : ""} mt-auto border-t border-glass-tint/40 pt-10 pb-[calc(7rem+env(safe-area-inset-bottom))] md:pb-10 px-4 text-xs text-text-secondary`}>
@@ -28,9 +28,6 @@ export function Footer() {
           </Link>
           <Link href="/explorar" className="hover:text-text-primary transition-colors">
             Explorar
-          </Link>
-          <Link href="/cerradas" className="hover:text-text-primary transition-colors">
-            Cerradas
           </Link>
           <Link href="/finalizadas" className="hover:text-text-primary transition-colors">
             Finalizadas

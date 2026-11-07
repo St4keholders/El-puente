@@ -24,6 +24,14 @@ const nextConfig: NextConfig = {
     position: "bottom-right",
   },
   poweredByHeader: false,
+  // La imagen para compartir lee la fuente desde el disco: hay que incluirla en la función de Vercel
+  outputFileTracingIncludes: {
+    "/causa/[id]/imagen": ["./assets/fonts/**/*"],
+  },
+  // "Cerradas" ya no es una sección: los enlaces viejos van a Explorar
+  async redirects() {
+    return [{ source: "/cerradas", destination: "/explorar", permanent: false }];
+  },
   // Cabeceras de seguridad para todas las páginas
   async headers() {
     return [

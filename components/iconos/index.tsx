@@ -91,6 +91,12 @@ export const IconoMenu = (p: IconoProps) => (
   </IconoBase>
 );
 
+export const IconoHamburguesa = (p: IconoProps) => (
+  <IconoBase {...p}>
+    <path d="M4 7h16M4 12h16M4 17h16" />
+  </IconoBase>
+);
+
 export const IconoMenuHorizontal = (p: IconoProps) => (
   <IconoBase {...p}>
     <circle cx="5" cy="12" r="1" fill="currentColor" stroke="none" />
@@ -162,6 +168,14 @@ export const IconoFoto = (p: IconoProps) => (
     <rect x="3.5" y="5" width="17" height="14" rx="2" />
     <circle cx="9" cy="10" r="1.6" />
     <path d="M4 17.5l5-4.5 4 3.5 3-2.5 4 3.5" />
+  </IconoBase>
+);
+
+export const IconoDescargar = (p: IconoProps) => (
+  <IconoBase {...p}>
+    <path d="M12 4v11" />
+    <polyline points="7 10.5 12 15.5 17 10.5" />
+    <path d="M4.5 16.5v2a1.5 1.5 0 0 0 1.5 1.5h12a1.5 1.5 0 0 0 1.5-1.5v-2" />
   </IconoBase>
 );
 

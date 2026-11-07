@@ -541,6 +541,13 @@ export function GlobeHero({ initialCounts, initialEvents }: GlobeHeroProps) {
             if (posterRef.current) posterRef.current.style.opacity = "0";
           });
 
+        // Rueda del mouse: hace scroll de la página (hay causas debajo). Para acercar el planeta:
+        // Ctrl/⌘ + rueda o pellizcar en el trackpad (que el navegador manda con ctrlKey).
+        const alRodar = (e: WheelEvent) => {
+          if (!e.ctrlKey && !e.metaKey) e.stopPropagation();
+        };
+        globeRef.current?.addEventListener("wheel", alRodar, { capture: true });
+
         // Controls setup
         const ctl = globe.controls();
         ctl.enablePan = false;
@@ -564,10 +571,17 @@ export function GlobeHero({ initialCounts, initialEvents }: GlobeHeroProps) {
         });
 
         // Layout sizing - exact math from planeta-hero.html & Section 1.2
-        const layout = () => {
+        // En el celular, al bajar por las causas, la barra del navegador se esconde y lanza "resize".
+        // El alto del hero es fijo (100svh), así que si el tamaño no cambió no se recalcula nada:
+        // así el planeta no salta ni se reinicia mientras la persona hace scroll.
+        let ultimaMedida = "";
+        const layout = (forzar: unknown = false) => {
           if (!containerRef.current || !globe) return;
           const w = containerRef.current.clientWidth;
           const h = containerRef.current.clientHeight;
+          const medida = `${w}x${h}`;
+          if (forzar !== true && medida === ultimaMedida) return;
+          ultimaMedida = medida;
           const mobile = w <= 720;
           const searchEl = searchWrapperRef.current;
           const introBottom = searchEl
@@ -618,12 +632,19 @@ export function GlobeHero({ initialCounts, initialEvents }: GlobeHeroProps) {
             globe.pointOfView({ lat: 14, lng: -28, altitude: stateRef.current.homeAlt }, 0);
           }
           shiftStage();
+
+          // En el celular, deslizar hacia arriba o abajo sobre el planeta mueve la página
+          // (para llegar a las causas recientes); arrastrar a los lados lo sigue girando.
+          // OrbitControls pone touch-action: none en el canvas; aquí se ajusta.
+          try {
+            globe.renderer().domElement.style.touchAction = mobile ? "pan-y" : "none";
+          } catch {}
         };
 
-        layout();
+        layout(true);
         window.addEventListener("resize", layout);
         if (typeof document !== "undefined" && document.fonts && document.fonts.ready) {
-          document.fonts.ready.then(layout);
+          document.fonts.ready.then(() => layout(true));
         }
 
         // Apply theme dynamically to globe without reloads (Sección 6.1)
@@ -674,6 +695,7 @@ export function GlobeHero({ initialCounts, initialEvents }: GlobeHeroProps) {
         }
 
         return () => {
+          globeRef.current?.removeEventListener("wheel", alRodar, { capture: true });
           themeObs.disconnect();
           if (darkMq.removeEventListener) darkMq.removeEventListener("change", onMqChange);
           window.removeEventListener("resize", layout);
@@ -703,7 +725,7 @@ export function GlobeHero({ initialCounts, initialEvents }: GlobeHeroProps) {
   return (
     <div
       ref={containerRef}
-      className="relative h-[100dvh] min-h-[460px] md:h-[100svh] md:min-h-[620px] w-full overflow-hidden overscroll-none bg-[var(--bg)] select-none"
+      className="relative h-[100svh] min-h-[460px] md:min-h-[620px] w-full overflow-hidden bg-[var(--bg)] select-none"
     >
       {/* Canvas cielo estrellado */}
       <canvas ref={starCanvasRef} className="absolute inset-0 pointer-events-none z-0" aria-hidden="true" />
@@ -744,7 +766,7 @@ export function GlobeHero({ initialCounts, initialEvents }: GlobeHeroProps) {
           className={`absolute inset-0 touch-none transition-opacity duration-1000 pointer-events-auto cursor-grab active:cursor-grabbing ${
             isGlobeReady ? "opacity-100" : "opacity-0"
           }`}
-          aria-label="Planeta interactivo en 3D. Gira y toca un país para explorar sus causas."
+          aria-label="Planeta interactivo en 3D. Gira y toca un país para explorar sus causas. Para acercar usa Ctrl y la rueda del mouse."
         />
 
         {!webglSupported && (

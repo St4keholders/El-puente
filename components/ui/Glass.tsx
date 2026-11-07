@@ -78,6 +78,7 @@ export const Glass: React.FC<GlassProps> = ({
   const tienePosicion = /(^|\s)(absolute|fixed|sticky)(\s|$)/.test(className);
   const tienePadding = /(^|\s)(p|px|py|pt|pb|pl|pr)-/.test(className);
   const tieneFondo = /(^|\s)bg-/.test(className);
+  const tieneOverflow = /(^|\s)overflow-/.test(className);
   const variantClass = tienePadding
     ? variantStyles[variant].replace(/(^|\s)(p|px|py)-\S+/g, "")
     : variantStyles[variant];
@@ -86,7 +87,7 @@ export const Glass: React.FC<GlassProps> = ({
     <Component
       ref={ref}
       onPointerMove={interactive ? handlePointerMove : undefined}
-      className={`glass-container ${tienePosicion ? "" : "relative"} overflow-hidden backdrop-blur-[var(--glass-blur)] backdrop-saturate-[var(--glass-saturate)] ${variantClass} ${className}`}
+      className={`glass-container ${tienePosicion ? "" : "relative"} ${tieneOverflow ? "" : "overflow-hidden"} backdrop-blur-[var(--glass-blur)] backdrop-saturate-[var(--glass-saturate)] ${variantClass} ${className}`}
       style={{
         ...(tieneFondo ? {} : { backgroundColor: "var(--glass-tint)" }),
         boxShadow: "var(--glass-shadow)",

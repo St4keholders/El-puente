@@ -102,7 +102,7 @@ export const feedPanelsConfig = {
     countText: (n: number) => (n === 1 ? "1 causa con resultados" : `${n} causas con resultados`),
     searchPlaceholder: "Busca entre los resultados",
     emptyNoFiltersTitle: "Aún nadie ha publicado resultados.",
-    emptyNoFiltersAction: { text: "Ver causas cerradas", href: "/cerradas" },
+    emptyNoFiltersAction: { text: "Ver causas activas", href: "/explorar" },
     emptyWithFiltersTitle: "No encontramos resultados con estos filtros.",
     emptyWithFiltersAction: "Limpiar filtros",
   },
