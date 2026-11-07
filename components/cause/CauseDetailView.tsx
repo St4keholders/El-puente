@@ -37,6 +37,7 @@ import { SeccionApoyos, type ApoyoConfirmado } from "@/components/apoyos/Seccion
 import type { AvisoRecibido } from "@/components/apoyos/AvisoPendiente";
 import { avisar } from "@/components/ui/Avisos";
 import { avisarNavegacion } from "@/components/layout/BarraNavegacion";
+import { DescargarImagenCausa } from "@/components/cause/DescargarImagenCausa";
 
 interface MediaItem {
   id: string;
@@ -116,6 +117,8 @@ interface CauseDetailViewProps {
   isFollowing: boolean;
   isOwner: boolean;
   currentUserId?: string | null;
+  /** Viene de publicarla: se invita a la autora a descargar la imagen para compartir */
+  recienPublicada?: boolean;
   currentUser?: { id: string; email: string } | null;
   currentUserProfile?: {
     id: string;
@@ -160,6 +163,7 @@ export function CauseDetailView({
   isFollowing: initialFollowing,
   isOwner,
   currentUserId,
+  recienPublicada = false,
   currentUser,
   currentUserProfile,
   initialComments,
@@ -290,6 +294,23 @@ export function CauseDetailView({
 
   return (
     <div className="max-w-4xl mx-auto px-4 space-y-8">
+      {/* Recién publicada: invitación a compartir con la imagen */}
+      {recienPublicada && isOwner && cause.status === "activa" && !cause.is_example && (
+        <div className="p-5 rounded-3xl bg-emerald-500/10 border border-emerald-500/25 space-y-3">
+          <div className="flex items-start gap-3">
+            <IconoCheckCirculo size={22} className="flex-shrink-0 mt-0.5 text-emerald-600 dark:text-emerald-400" />
+            <div>
+              <p className="font-bold text-text-primary">¡Tu causa ya está publicada!</p>
+              <p className="text-sm text-text-secondary mt-0.5">
+                Descarga una imagen con cómo donar, el enlace y un código QR, y compártela en WhatsApp,
+                Instagram o Facebook.
+              </p>
+            </div>
+          </div>
+          <DescargarImagenCausa causeId={cause.id} titulo={cause.title} />
+        </div>
+      )}
+
 
       {/* 0. Banner de causa de ejemplo */}
       {cause.is_example && (
@@ -522,6 +543,10 @@ export function CauseDetailView({
               <IconoGuardar size={20} className={isSaved ? "fill-accent text-accent" : ""} />
             </button>
 
+            {cause.status !== "borrador" && !cause.is_example && (
+              <DescargarImagenCausa causeId={cause.id} titulo={cause.title} variante="icono" />
+            )}
+
             <button
               onClick={handleShare}
               className="p-2.5 rounded-full glass-surface text-text-secondary hover:text-text-primary transition-colors"
@@ -724,6 +749,11 @@ export function CauseDetailView({
         className="space-y-6 pt-4"
         style={{ scrollMarginTop: "calc(var(--alto-header) + 16px)" } as React.CSSProperties}
       >
+        {/* Imagen con cómo donar, enlace y QR para compartir en redes */}
+        {cause.status === "activa" && !cause.is_example && (
+          <DescargarImagenCausa causeId={cause.id} titulo={cause.title} />
+        )}
+
         {/* 8a. Cómo donar dinero */}
         {includesDinero && (
           <div className="space-y-4">

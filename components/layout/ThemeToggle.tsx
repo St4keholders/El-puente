@@ -7,9 +7,14 @@ export function ThemeToggle() {
   const [theme, setTheme] = useState<"light" | "dark">("light");
 
   useEffect(() => {
-    const saved = localStorage.getItem("puente-theme") as "light" | "dark" | null;
+    let saved: "light" | "dark" | null = null;
+    try {
+      saved = localStorage.getItem("puente-theme") as "light" | "dark" | null;
+    } catch {}
     const systemDark = window.matchMedia("(prefers-color-scheme: dark)").matches;
-    const initial = saved || (systemDark ? "dark" : "light");
+    // Si otro botón de tema ya lo cambió (hay uno en el menú del celular), se respeta
+    const actual = document.documentElement.getAttribute("data-theme") as "light" | "dark" | null;
+    const initial = actual || saved || (systemDark ? "dark" : "light");
     setTheme(initial);
     document.documentElement.setAttribute("data-theme", initial);
   }, []);
@@ -18,7 +23,9 @@ export function ThemeToggle() {
     const next = theme === "dark" ? "light" : "dark";
     setTheme(next);
     document.documentElement.setAttribute("data-theme", next);
-    localStorage.setItem("puente-theme", next);
+    try {
+      localStorage.setItem("puente-theme", next);
+    } catch {}
   };
 
   return (

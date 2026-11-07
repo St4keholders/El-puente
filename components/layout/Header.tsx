@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { Glass } from "@/components/ui/Glass";
@@ -8,31 +8,52 @@ import { ThemeToggle } from "@/components/layout/ThemeToggle";
 import { useUser } from "@/lib/hooks/useUser";
 import { urlDeAvatar } from "@/lib/media";
 import {
-  IconoMenuHorizontal,
   IconoAyuda,
   IconoCheckCirculo,
-  IconoArchivo,
+  IconoBrujula,
   IconoSalir,
+  IconoHamburguesa,
+  IconoX,
 } from "@/components/iconos";
 
 export function Header() {
   const pathname = usePathname();
   const { user, profile, hasPhone, hasPendingSupports } = useUser();
   const tienePendientes = !hasPhone || hasPendingSupports;
-  const [showMoreMenu, setShowMoreMenu] = useState(false);
+  const [menuAbierto, setMenuAbierto] = useState(false);
+  const menuRef = useRef<HTMLDivElement>(null);
 
   const navLinks = [
     { href: "/explorar", label: "Explorar causas" },
-    { href: "/cerradas", label: "Cerradas" },
     { href: "/finalizadas", label: "Finalizadas" },
     { href: "/como-funciona", label: "Cómo funciona" },
   ];
+
+  // El menú se cierra al cambiar de página, al tocar fuera o con Escape
+  const [rutaMenu, setRutaMenu] = useState(pathname);
+  if (rutaMenu !== pathname) {
+    setRutaMenu(pathname);
+    setMenuAbierto(false);
+  }
+  useEffect(() => {
+    if (!menuAbierto) return;
+    const fuera = (e: PointerEvent) => {
+      if (menuRef.current && !menuRef.current.contains(e.target as Node)) setMenuAbierto(false);
+    };
+    const escape = (e: KeyboardEvent) => e.key === "Escape" && setMenuAbierto(false);
+    document.addEventListener("pointerdown", fuera);
+    document.addEventListener("keydown", escape);
+    return () => {
+      document.removeEventListener("pointerdown", fuera);
+      document.removeEventListener("keydown", escape);
+    };
+  }, [menuAbierto]);
 
   return (
     <header className="fixed top-4 left-0 right-0 z-50 flex justify-center px-4 pointer-events-none">
       <Glass
         variant="bar"
-        className="pointer-events-auto flex w-full max-w-6xl items-center justify-between gap-4 py-2.5 px-4 md:px-6"
+        className="pointer-events-auto flex w-full max-w-6xl items-center justify-between gap-4 py-2.5 px-4 md:px-6 overflow-visible"
       >
         {/* Marca / Logo */}
         <Link
@@ -76,65 +97,12 @@ export function Header() {
           })}
         </nav>
 
-        {/* Navegación Tableta (721px a 1099px) */}
-        <nav className="hidden md:flex lg:hidden items-center gap-2" aria-label="Navegación tableta">
-          <Link
-            href="/explorar"
-            aria-current={pathname === "/explorar" ? "page" : undefined}
-            className={`rounded-xl px-3 py-1.5 text-sm font-medium transition-colors ${
-              pathname === "/explorar"
-                ? "bg-[var(--hover)] text-[var(--accent-ink)] font-semibold"
-                : "text-[var(--ink-2)] hover:text-[var(--ink)]"
-            }`}
-          >
-            Explorar
-          </Link>
-          <div className="relative">
-            <button
-              onClick={() => setShowMoreMenu(!showMoreMenu)}
-              type="button"
-              className="flex items-center gap-1 rounded-xl px-3 py-1.5 text-sm font-medium text-[var(--ink-2)] hover:text-[var(--ink)] hover:bg-[var(--hover)] cursor-pointer"
-            >
-              <span>Más</span>
-              <IconoMenuHorizontal size={16} />
-            </button>
-            {showMoreMenu && (
-              <Glass
-                variant="menu"
-                className="absolute right-0 top-full mt-2 w-48 shadow-xl"
-              >
-                <Link
-                  href="/cerradas"
-                  onClick={() => setShowMoreMenu(false)}
-                  className="flex items-center gap-2 rounded-xl px-3 py-2 text-sm text-[var(--ink)] hover:bg-[var(--hover)]"
-                >
-                  <IconoArchivo size={16} className="text-[var(--ink-2)]" />
-                  <span>Cerradas</span>
-                </Link>
-                <Link
-                  href="/finalizadas"
-                  onClick={() => setShowMoreMenu(false)}
-                  className="flex items-center gap-2 rounded-xl px-3 py-2 text-sm text-[var(--ink)] hover:bg-[var(--hover)]"
-                >
-                  <IconoCheckCirculo size={16} className="text-[var(--accent-ink)]" />
-                  <span>Finalizadas</span>
-                </Link>
-                <Link
-                  href="/como-funciona"
-                  onClick={() => setShowMoreMenu(false)}
-                  className="flex items-center gap-2 rounded-xl px-3 py-2 text-sm text-[var(--ink)] hover:bg-[var(--hover)]"
-                >
-                  <IconoAyuda size={16} className="text-[var(--ink-2)]" />
-                  <span>Cómo funciona</span>
-                </Link>
-              </Glass>
-            )}
-          </div>
-        </nav>
-
         {/* Acciones derechas */}
-        <div className="flex items-center gap-2.5">
-          <ThemeToggle />
+        <div className="flex items-center gap-2 sm:gap-2.5">
+          {/* En el celular el tema va dentro del menú, para que quepa todo */}
+          <div className="hidden md:block">
+            <ThemeToggle />
+          </div>
 
           {/* Botón Crear Causa (Desktop y Tableta) */}
           <Link
@@ -182,7 +150,7 @@ export function Header() {
                 href="/auth/signout"
                 title="Cerrar sesión"
                 aria-label="Cerrar sesión"
-                className="inline-flex h-8 w-8 items-center justify-center rounded-xl border border-[var(--line)] bg-[var(--field)] text-[var(--ink-3)] hover:text-rose-400 hover:border-rose-400/40 hover:bg-rose-500/10 transition-colors"
+                className="hidden md:inline-flex h-8 w-8 items-center justify-center rounded-xl border border-[var(--line)] bg-[var(--field)] text-[var(--ink-3)] hover:text-rose-400 hover:border-rose-400/40 hover:bg-rose-500/10 transition-colors"
               >
                 <IconoSalir size={15} />
               </a>
@@ -195,6 +163,75 @@ export function Header() {
               Entrar
             </Link>
           )}
+
+          {/* Menú (celular y tableta): Explorar, Finalizadas, Cómo funciona, tema y salir */}
+          <div ref={menuRef} className="relative lg:hidden">
+            <button
+              type="button"
+              onClick={() => setMenuAbierto((v) => !v)}
+              aria-expanded={menuAbierto}
+              aria-controls="menu-principal-movil"
+              aria-label={menuAbierto ? "Cerrar menú" : "Abrir menú"}
+              className="flex h-10 w-10 items-center justify-center rounded-xl border border-[var(--line)] bg-[var(--field)] text-[var(--ink)] hover:bg-[var(--hover)] cursor-pointer"
+            >
+              {menuAbierto ? <IconoX size={18} /> : <IconoHamburguesa size={18} />}
+            </button>
+
+            {menuAbierto && (
+              <div
+                id="menu-principal-movil"
+                className="absolute right-0 top-full mt-3 w-64 rounded-2xl border border-[var(--line)] bg-[var(--surface-solid)] p-2 shadow-2xl animate-fade-in"
+              >
+                <nav aria-label="Menú principal" className="flex flex-col">
+                  {[
+                    { href: "/explorar", label: "Explorar causas", icono: <IconoBrujula size={18} /> },
+                    { href: "/finalizadas", label: "Finalizadas", icono: <IconoCheckCirculo size={18} /> },
+                    { href: "/como-funciona", label: "Cómo funciona", icono: <IconoAyuda size={18} /> },
+                  ].map((l) => {
+                    const activo = pathname === l.href;
+                    return (
+                      <Link
+                        key={l.href}
+                        href={l.href}
+                        aria-current={activo ? "page" : undefined}
+                        className={`flex items-center gap-3 rounded-xl px-3 py-3 text-[15px] font-medium transition-colors ${
+                          activo
+                            ? "bg-[var(--hover)] text-[var(--accent-ink)] font-semibold"
+                            : "text-[var(--ink)] hover:bg-[var(--hover)]"
+                        }`}
+                      >
+                        <span className={activo ? "text-[var(--accent-ink)]" : "text-[var(--ink-2)]"}>{l.icono}</span>
+                        {l.label}
+                      </Link>
+                    );
+                  })}
+                </nav>
+
+                <div className="my-2 h-px bg-[var(--line)] md:hidden" />
+                <div className="flex items-center justify-between rounded-xl px-3 py-1.5 md:hidden">
+                  <span className="text-[15px] font-medium text-[var(--ink)]">Tema</span>
+                  <ThemeToggle />
+                </div>
+                {user && (
+                  <a
+                    href="/auth/signout"
+                    className="flex items-center gap-3 rounded-xl px-3 py-3 text-[15px] font-medium text-rose-500 hover:bg-rose-500/10 md:hidden"
+                  >
+                    <IconoSalir size={18} />
+                    Cerrar sesión
+                  </a>
+                )}
+                <div className="mt-1 flex gap-4 px-3 pb-1 pt-2 text-xs text-[var(--ink-3)]">
+                  <Link href="/terminos" className="hover:text-[var(--ink)]">
+                    Términos
+                  </Link>
+                  <Link href="/privacidad" className="hover:text-[var(--ink)]">
+                    Privacidad
+                  </Link>
+                </div>
+              </div>
+            )}
+          </div>
         </div>
       </Glass>
     </header>

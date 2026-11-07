@@ -1,6 +1,7 @@
 "use client";
 
 import React from "react";
+import { IconoFlechaAbajo } from "@/components/iconos";
 import type { Database } from "@/lib/database.types";
 
 type ActivityEvent = Database["public"]["Tables"]["activity_events"]["Row"];
@@ -35,9 +36,17 @@ export function RecentActivity({
   };
 
   return (
-    <div className="fixed bottom-[calc(6rem+env(safe-area-inset-bottom))] md:bottom-6 left-0 right-0 z-30 flex flex-col sm:flex-row items-center sm:items-end justify-between gap-2 sm:gap-4 px-4 sm:px-6 md:px-10 pointer-events-none">
+    // absolute (no fixed): ahora la portada tiene causas debajo y esto no debe flotar sobre ellas
+    <div className="absolute bottom-[calc(6rem+env(safe-area-inset-bottom))] md:bottom-6 left-0 right-0 z-30 flex flex-col sm:flex-row items-center sm:items-end justify-between gap-2 sm:gap-4 px-4 sm:px-6 md:px-10 pointer-events-none">
       {/* Contador de estado en vivo */}
-      <div className="flex items-center gap-2.5 rounded-full border border-[var(--line)] bg-[var(--surface)] px-3.5 py-1.5 sm:px-4 sm:py-2 text-[13px] sm:text-sm text-[var(--ink-2)] shadow-md pointer-events-auto backdrop-blur-md whitespace-nowrap">
+      <button
+        type="button"
+        onClick={() =>
+          document.getElementById("causas-recientes")?.scrollIntoView({ behavior: "smooth", block: "start" })
+        }
+        aria-label={`${activeCausesCount} causas activas en ${activeCountriesCount} países. Ver causas recientes`}
+        className="group flex items-center gap-2.5 rounded-full border border-[var(--line)] bg-[var(--surface-solid)] pl-3.5 pr-1.5 py-1.5 sm:pl-4 sm:py-2 text-[13px] sm:text-sm text-[var(--ink-2)] shadow-md pointer-events-auto whitespace-nowrap cursor-pointer hover:border-[var(--accent)]/50 transition-colors"
+      >
         <span className="relative flex h-2.5 w-2.5">
           <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-[var(--accent)] opacity-75" />
           <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-[var(--accent)]" />
@@ -50,17 +59,24 @@ export function RecentActivity({
           >
             {fmt(activeCausesCount)}
           </strong>{" "}
-          causas activas en{" "}
-          <strong
-            className={`font-semibold text-[var(--ink)] tabular-nums transition-colors duration-700 ${
-              bumpStat === "country" ? "text-[var(--accent-ink)]" : ""
-            }`}
-          >
-            {fmt(activeCountriesCount)}
-          </strong>{" "}
-          países
+          causas activas
+          <span className="max-[359px]:hidden">
+            {" "}en{" "}
+            <strong
+              className={`font-semibold text-[var(--ink)] tabular-nums transition-colors duration-700 ${
+                bumpStat === "country" ? "text-[var(--accent-ink)]" : ""
+              }`}
+            >
+              {fmt(activeCountriesCount)}
+            </strong>{" "}
+            países
+          </span>
         </span>
-      </div>
+        <span className="flex items-center gap-1 rounded-full bg-[var(--accent)] px-2.5 py-1 text-xs font-semibold text-white">
+          Ver
+          <IconoFlechaAbajo size={13} className="transition-transform group-hover:translate-y-0.5" />
+        </span>
+      </button>
 
       {/* Feed de eventos recientes */}
       {events.length > 0 && (
