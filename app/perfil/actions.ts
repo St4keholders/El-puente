@@ -31,7 +31,7 @@ export async function updateProfileAction(data: UpdateProfileInput) {
 
   const { data: actual, error: leerErr } = await supabase
     .from("profiles")
-    .select("identity_verified")
+    .select("identity_verified, account_type")
     .eq("id", user.id)
     .maybeSingle();
   if (leerErr) {
@@ -39,7 +39,7 @@ export async function updateProfileAction(data: UpdateProfileInput) {
     return { success: false, error: "No pudimos leer tu perfil. Inténtalo de nuevo." };
   }
   // Con la identidad verificada el nombre sale del documento y no se puede cambiar.
-  const nombreFijo = Boolean(actual?.identity_verified);
+  const nombreFijo = Boolean(actual?.identity_verified) || actual?.account_type === "empresa";
 
   const cleanName = (data.fullName || "").replace(/\s+/g, " ").trim();
   if (!nombreFijo && (cleanName.length < 2 || cleanName.length > 80)) {

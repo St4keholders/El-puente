@@ -30,6 +30,13 @@ export default function ComoFuncionaPage() {
           Un canal directo entre quienes afrontan una emergencia y quienes desean apoyar.
           Sin pasarelas de pago, sin retención de fondos y con cero comisiones.
         </p>
+        <Link
+          href="/tutorial?next=/como-funciona"
+          className="inline-flex items-center gap-2 rounded-2xl bg-[var(--cta)] px-6 py-3.5 text-base font-bold text-white shadow-lg hover:brightness-110"
+        >
+          Ver el tutorial de 1 minuto
+          <IconoFlechaDerecha size={18} />
+        </Link>
       </div>
 
       {/* 3 Pasos con Separadores de 1px (Estilo Stakeholders .features) */}

@@ -1099,6 +1099,11 @@ function NuevaCausaContent({
         "Estamos confirmando tu ubicación: te conectas desde un país distinto al de tu documento. Podrás publicar cuando completes 6 horas seguidas conectado desde allí. Tu causa queda guardada.",
       step: 3,
     },
+    REQ_EDAD: {
+      message:
+        "Para publicar causas necesitas tener 18 años cumplidos. Si ya los tienes, verifica tu identidad para confirmarlo.",
+      step: 5,
+    },
     UBICACION_SIN_CONFIRMAR: {
       message: "No pudimos confirmar desde dónde te conectas. Recarga la página e inténtalo de nuevo.",
       step: 3,

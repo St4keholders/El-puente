@@ -5,13 +5,15 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import { CauseDetailView } from "@/components/cause/CauseDetailView";
 import { cargarComentariosAction, contarComentariosAction } from "@/app/actions/comments";
 import mundoData from "@/lib/geo/mundo.json";
+import { TutorialPuente } from "@/components/tutorial/TutorialPuente";
+import { destinoSeguro } from "@/lib/utils/destino";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
 
 interface CausePageProps {
   params: Promise<{ id: string }>;
-  searchParams?: Promise<{ publicada?: string }>;
+  searchParams?: Promise<{ publicada?: string; tutorial?: string; next?: string }>;
 }
 
 export async function generateMetadata(props: CausePageProps): Promise<Metadata> {
@@ -75,7 +77,8 @@ export async function generateMetadata(props: CausePageProps): Promise<Metadata>
 
 export default async function CauseDetailPage(props: CausePageProps) {
   const { id } = await props.params;
-  const recienPublicada = (await props.searchParams)?.publicada === "1";
+  const parametros = await props.searchParams;
+  const recienPublicada = parametros?.publicada === "1";
   const supabase = await createClient();
 
   const {
@@ -118,7 +121,9 @@ export default async function CauseDetailPage(props: CausePageProps) {
         public_id,
         avatar_url,
         bio,
-        identity_verified
+        identity_verified,
+        account_type,
+        company_verified
       ),
       media:cause_media(
         id,
@@ -150,10 +155,11 @@ export default async function CauseDetailPage(props: CausePageProps) {
   // solo para esta causa (la tabla sigue cerrada a anon, así nadie puede descargarlas todas de golpe).
   let donationMethods: any[] = [];
   let donationMethodsError: string | null = null;
-  if (!cause.is_example && (user || cause.status === "activa")) {
+  // La causa de ejemplo del tutorial muestra sus datos de ejemplo a todos
+  if (cause.is_example || user || cause.status === "activa") {
     let cliente;
     try {
-      cliente = user ? supabase : createAdminClient();
+      cliente = user && !cause.is_example ? supabase : createAdminClient();
     } catch (err) {
       console.error("/causa donation_methods: cliente del servidor", err);
     }
@@ -286,6 +292,9 @@ export default async function CauseDetailPage(props: CausePageProps) {
         apoyosConfirmados={(confirmadosRes.data || []) as any}
         avisosPendientes={(pendientesRes.data || []) as any}
       />
+      {cause.is_example && parametros?.tutorial === "1" && (
+        <TutorialPuente siguiente={destinoSeguro(parametros.next, "/explorar")} />
+      )}
     </main>
   );
 }

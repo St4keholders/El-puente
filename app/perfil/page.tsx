@@ -21,7 +21,7 @@ export default async function MisDatosPage() {
 
   const { data: priv } = await supabase
     .from("profile_private")
-    .select("phone")
+    .select("phone, birth_year, company_nit")
     .eq("id", user.id)
     .maybeSingle();
 
@@ -29,7 +29,7 @@ export default async function MisDatosPage() {
     supabase
       .from("identity_verifications")
       .select(
-        "status, verified_at, expires_at, decline_reason, verified_full_name, verified_given_names, verified_last_names, document_country, document_last4"
+        "status, verified_at, expires_at, decline_reason, verified_full_name, verified_given_names, verified_last_names, document_country, document_last4, verified_birth_date"
       )
       .eq("user_id", user.id)
       .order("created_at", { ascending: false })
@@ -38,7 +38,7 @@ export default async function MisDatosPage() {
   let { data: verif } = await leerVerificacion();
 
   // Cuentas verificadas antes de guardar los últimos 4 y el nombre público: se completan una vez.
-  if (verif?.status === "aprobada" && !verif.document_last4 && !verif.verified_given_names) {
+  if (verif?.status === "aprobada" && ((!verif.document_last4 && !verif.verified_given_names) || !verif.verified_birth_date)) {
     await completarDatosIdentidad(user.id);
     ({ data: verif } = await leerVerificacion());
     ({ data: profile } = await leerPerfil());
@@ -50,6 +50,8 @@ export default async function MisDatosPage() {
       userEmail={user.email || ""}
       initialProfile={profile}
       initialPhone={priv?.phone || null}
+      anioNacimiento={priv?.birth_year ?? null}
+      nitEmpresa={priv?.company_nit ?? null}
       initialVerification={verif || null}
     />
   );

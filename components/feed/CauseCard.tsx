@@ -20,6 +20,7 @@ import { toggleFollowAction } from "@/app/actions/social";
 import { MarcoImagen } from "@/components/media/MarcoImagen";
 import { urlDeAvatar } from "@/lib/media";
 import { avisar } from "@/components/ui/Avisos";
+import { InsigniaEmpresa } from "@/components/ui/InsigniaEmpresa";
 
 export interface CauseMediaItem {
   id?: string;
@@ -37,6 +38,8 @@ export interface CauseAuthor {
   public_id: string;
   avatar_url?: string | null;
   identity_verified?: boolean;
+  es_empresa?: boolean;
+  empresa_verificada?: boolean;
 }
 
 export interface CauseCardProps {
@@ -416,6 +419,9 @@ export function CauseCard({
                         </span>
                       )}
                     </div>
+                    {author.es_empresa && (
+                      <InsigniaEmpresa verificada={author.empresa_verificada} className="mt-1 self-start" />
+                    )}
                   </div>
                 </div>
 

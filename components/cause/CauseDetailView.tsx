@@ -29,7 +29,7 @@ import { Glass } from "@/components/ui/Glass";
 import { MarcoImagen } from "@/components/media/MarcoImagen";
 import { formatDistanceToNow } from "@/lib/utils/date";
 import { CommentsSection, type CommentItem } from "@/components/cause/CommentsSection";
-import { urlDeAvatar } from "@/lib/media";
+import { urlDeAvatar, urlDeMedio } from "@/lib/media";
 import { createClient } from "@/lib/supabase/client";
 import { ModalRegistrarApoyo } from "@/components/cause/ModalRegistrarApoyo";
 import { ModalAvisoDonacion } from "@/components/cause/ModalAvisoDonacion";
@@ -38,6 +38,7 @@ import type { AvisoRecibido } from "@/components/apoyos/AvisoPendiente";
 import { avisar } from "@/components/ui/Avisos";
 import { avisarNavegacion } from "@/components/layout/BarraNavegacion";
 import { DescargarImagenCausa } from "@/components/cause/DescargarImagenCausa";
+import { InsigniaEmpresa } from "@/components/ui/InsigniaEmpresa";
 
 interface MediaItem {
   id: string;
@@ -101,6 +102,8 @@ interface CauseDetailViewProps {
       avatar_url?: string | null;
       bio?: string | null;
       identity_verified?: boolean;
+      account_type?: string | null;
+      company_verified?: boolean | null;
     };
     media: MediaItem[];
   };
@@ -187,7 +190,6 @@ export function CauseDetailView({
   const [currentRaised, setCurrentRaised] = useState(cause.raised_reported || 0);
   const [suppliesList, setSuppliesList] = useState(supplies);
 
-  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || "";
 
   // Filter media for cause story phase
   const causeMedia = [...(cause.media || [])]
@@ -201,11 +203,14 @@ export function CauseDetailView({
 
   const getMediaUrl = (item: MediaItem) => {
     if (isExamplePath(item.storage_path)) return "";
-    if (item.storage_path.startsWith("http")) return item.storage_path;
-    return `${supabaseUrl}/storage/v1/object/public/${item.bucket}/${item.storage_path}`;
+    return urlDeMedio(item.bucket, item.storage_path);
   };
 
   const handleCopy = async (val: string) => {
+    if (cause.is_example) {
+      avisar("Así se copia el dato para pagar desde tu banco o app. Esta causa es de ejemplo: no transfieras aquí.", "info");
+      return;
+    }
     try {
       await navigator.clipboard.writeText(val);
       setCopiedValue(val);
@@ -317,8 +322,16 @@ export function CauseDetailView({
         <div className="flex items-start gap-3 p-4 rounded-2xl bg-amber-500/10 border border-amber-500/30 text-amber-500 text-sm">
           <IconoAlerta size={18} className="flex-shrink-0 mt-0.5" />
           <div>
-            <p className="font-bold">Esta es una causa de demostración.</p>
-            <p className="text-xs mt-0.5 opacity-90">No envíes dinero ni insumos. Solo existe para que pruebes la plataforma.</p>
+            <p className="font-bold">Esta es la causa de ejemplo de Puente.</p>
+            <p className="text-xs mt-0.5 opacity-90">
+              Sirve para aprender cómo funciona todo. No envíes dinero ni insumos a estos datos.
+            </p>
+            <Link
+              href={`/causa/${cause.id}?tutorial=1`}
+              className="mt-2 inline-flex items-center gap-1.5 rounded-full bg-amber-500 px-3 py-1.5 text-xs font-bold text-white hover:brightness-110"
+            >
+              Ver el tutorial
+            </Link>
           </div>
         </div>
       )}
@@ -405,7 +418,7 @@ export function CauseDetailView({
 
       {/* 3. Full Media Gallery */}
       {causeMedia.length > 0 && (
-        <div className="space-y-3">
+        <div className="space-y-3" data-tutorial="fotos">
           {/* Main Display Frame (4:3) */}
           <div className="relative w-full aspect-[4/3] sm:aspect-[16/10] rounded-3xl overflow-hidden glass-card group select-none">
             {isExamplePath(causeMedia[activeMediaIdx]?.storage_path ?? "") ? (
@@ -548,6 +561,7 @@ export function CauseDetailView({
             )}
 
             <button
+              data-tutorial="compartir"
               onClick={handleShare}
               className="p-2.5 rounded-full glass-surface text-text-secondary hover:text-text-primary transition-colors"
               title="Compartir causa"
@@ -580,7 +594,7 @@ export function CauseDetailView({
       </div>
 
       {/* 5. Author Card */}
-      <Glass variant="panel" className="p-4 rounded-3xl flex items-center justify-between gap-4">
+      <Glass variant="panel" data-tutorial="autor" className="p-4 rounded-3xl flex items-center justify-between gap-4">
         <Link href={`/u/${cause.author.public_id}`} className="flex items-center gap-3 min-w-0">
           <div className="w-12 h-12 rounded-full overflow-hidden bg-glass-tint flex-shrink-0 flex items-center justify-center font-bold text-accent text-lg">
             {urlDeAvatar(cause.author.avatar_url) ? (
@@ -609,6 +623,9 @@ export function CauseDetailView({
                   <IconoCheckCirculo size={12} />
                   <span>Identidad verificada</span>
                 </span>
+              )}
+              {cause.author.account_type === "empresa" && (
+                <InsigniaEmpresa verificada={cause.author.company_verified} />
               )}
             </div>
             <p className="text-xs text-text-secondary">{cause.author.public_id}</p>
@@ -756,7 +773,7 @@ export function CauseDetailView({
 
         {/* 8a. Cómo donar dinero */}
         {includesDinero && (
-          <div className="space-y-4">
+          <div className="space-y-4" data-tutorial="donar">
             <div className="flex items-center gap-2">
               <IconoTarjeta size={22} className="text-accent" />
               <h3 className="font-bold text-xl text-text-primary">Cómo donar dinero</h3>
@@ -804,11 +821,6 @@ export function CauseDetailView({
               <div className="p-6 rounded-3xl glass-card text-center text-text-secondary text-sm">
                 <p className="font-semibold text-text-primary">Esta causa ya no recibe donaciones.</p>
               </div>
-            ) : cause.is_example ? (
-              <div className="p-5 rounded-2xl glass-card border border-amber-500/20 text-center text-sm text-text-secondary">
-                <p className="font-semibold text-text-primary">Aquí aparecerían tus métodos de pago.</p>
-                <p className="text-xs mt-1">Esta es una causa de ejemplo. No envíes dinero real.</p>
-              </div>
             ) : donationMethodsError ? (
               <p className="text-xs text-rose-400 text-center py-4">{donationMethodsError}</p>
             ) : donationMethods.length > 0 ? (
@@ -840,6 +852,7 @@ export function CauseDetailView({
                     </div>
                     <div className="pt-2">
                       <button
+                        data-tutorial={m === donationMethods[0] ? "copiar" : undefined}
                         onClick={() => handleCopy(m.account_value)}
                         className="w-full py-2 rounded-xl glass-tint hover:bg-glass-tint/80 text-xs font-semibold text-text-primary flex items-center justify-center gap-1.5 transition-all"
                       >
@@ -865,8 +878,27 @@ export function CauseDetailView({
               </p>
             )}
 
-            {true && cause.status === "activa" && !isOwner && !cause.is_example && (
+            {cause.status === "activa" && cause.is_example && (
               <div className="flex justify-center">
+                <button
+                  type="button"
+                  data-tutorial="ya-done"
+                  onClick={() =>
+                    avisar(
+                      "En una causa real, aquí le avisas a quien publica que ya donaste. Ella confirma que le llegó y te agradece.",
+                      "info"
+                    )
+                  }
+                  className="inline-flex items-center gap-1.5 px-5 py-2.5 rounded-full bg-accent text-white font-semibold text-xs hover:bg-accent/90 shadow-md shadow-accent/20 cursor-pointer"
+                >
+                  <IconoCheck size={14} />
+                  <span>Ya hice mi donación</span>
+                </button>
+              </div>
+            )}
+
+            {cause.status === "activa" && !isOwner && !cause.is_example && (
+              <div className="flex justify-center" data-tutorial="ya-done">
                 {currentUserId ? (
                   <button
                     type="button"
@@ -892,7 +924,7 @@ export function CauseDetailView({
 
         {/* 8b. Cómo entregar insumos */}
         {includesInsumos && (
-          <div className="space-y-4">
+          <div className="space-y-4" data-tutorial="insumos">
             <div className="flex items-center gap-2">
               <IconoArchivo size={20} className="text-accent" />
               <h3 className="font-bold text-xl text-text-primary">Cómo entregar insumos</h3>
@@ -906,12 +938,7 @@ export function CauseDetailView({
               </p>
             </div>
 
-            {cause.is_example ? (
-              <div className="p-5 rounded-2xl glass-card border border-amber-500/20 text-center text-sm text-text-secondary">
-                <p className="font-semibold text-text-primary">Aquí aparecerían las instrucciones de entrega.</p>
-                <p className="text-xs mt-1">Esta es una causa de ejemplo.</p>
-              </div>
-            ) : cause.supplies_instructions ? (
+            {cause.supplies_instructions ? (
               <div className="p-5 rounded-2xl glass-card border border-glass-tint">
                 <p className="text-sm text-text-primary leading-relaxed whitespace-pre-wrap">
                   {cause.supplies_instructions}

@@ -242,6 +242,7 @@ export class DiditProvider implements IdentityProvider {
       verifiedFullName,
       givenNames: idv?.first_name || undefined,
       lastNames: idv?.last_name || undefined,
+      birthDate: /^\d{4}-\d{2}-\d{2}$/.test(String(idv?.date_of_birth || "")) ? String(idv.date_of_birth) : undefined,
       documentCountry: idv?.issuing_state || idv?.issuing_country || idv?.country || undefined,
       documentNumber: idv?.document_number || idv?.personal_number || undefined,
       declineReason,

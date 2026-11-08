@@ -20,6 +20,7 @@ export async function getCountryCausesAction(countryCode: string) {
         { count: "exact" }
       )
       .eq("status", "activa")
+      .eq("is_example", false)
       .eq("country_code", countryCode.toUpperCase())
       .order("published_at", { ascending: false })
       .limit(4);
