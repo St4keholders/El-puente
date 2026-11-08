@@ -1,6 +1,7 @@
 ﻿import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { NuevaCausaClient } from "./NuevaCausaClient";
+import { IntroPublicar } from "@/components/tutorial/IntroPublicar";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
@@ -32,10 +33,13 @@ export default async function NuevaCausaPage() {
     .maybeSingle();
 
   return (
-    <NuevaCausaClient
-      currentUser={user}
-      currentUserProfile={profile}
-      hasPhoneInitial={Boolean(priv?.phone)}
-    />
+    <>
+      <IntroPublicar />
+      <NuevaCausaClient
+        currentUser={user}
+        currentUserProfile={profile}
+        hasPhoneInitial={Boolean(priv?.phone)}
+      />
+    </>
   );
 }

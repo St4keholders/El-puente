@@ -60,6 +60,38 @@ export function nombrePublico(params: {
   return [enFormaTitulo(nombres), inicial].filter(Boolean).join(" ").slice(0, 80);
 }
 
+/** "DE LA CRUZ PÉREZ" → "de la Cruz"; "VÁSQUEZ MEJÍA" → "Vásquez". Partículas incluidas. */
+export function primerApellido(apellidos: string | null | undefined): string {
+  const partes = limpiar(apellidos).split(" ").filter(Boolean);
+  const salida: string[] = [];
+  for (const p of partes) {
+    salida.push(p);
+    if (!PARTICULAS.has(p.toLocaleLowerCase("es"))) break;
+  }
+  return enFormaTitulo(salida.join(" "));
+}
+
+/**
+ * Nombre que se ve en Puente según el tipo de cuenta:
+ * - Persona: "Juan Andrés V."
+ * - Empresa: "El Puente · Juan Andrés Vásquez" (la empresa y quien responde por ella)
+ */
+export function nombreDeCuenta(params: {
+  nombres?: string | null;
+  apellidos?: string | null;
+  nombreCompleto?: string | null;
+  empresa?: string | null;
+}): string | null {
+  const empresa = limpiar(params.empresa);
+  if (!empresa) return nombrePublico(params);
+
+  let nombres = limpiar(params.nombres);
+  let apellidos = limpiar(params.apellidos);
+  if (!nombres || !apellidos) ({ nombres, apellidos } = repartirNombre(params.nombreCompleto));
+  const persona = [enFormaTitulo(nombres), primerApellido(apellidos)].filter(Boolean).join(" ");
+  return persona ? `${empresa} · ${persona}`.slice(0, 120) : empresa.slice(0, 120);
+}
+
 /** Últimos 4 caracteres del documento, sin espacios ni guiones. Nunca se guarda el resto. */
 export function ultimosCuatro(numero: string | null | undefined): string | null {
   const limpio = (numero || "").toUpperCase().replace(/[^A-Z0-9]/g, "");

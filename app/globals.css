@@ -396,3 +396,23 @@ textarea {
     min-width: 0;
   }
 }
+
+/* ───────────── Tutorial ───────────── */
+.tut-aparecer { animation: tut-aparecer 260ms ease-out both; }
+.tut-foco { transition: top 420ms cubic-bezier(.2,.8,.2,1), left 420ms cubic-bezier(.2,.8,.2,1), width 420ms cubic-bezier(.2,.8,.2,1), height 420ms cubic-bezier(.2,.8,.2,1); }
+.tut-anillo { box-shadow: 0 0 0 3px var(--tut-color, #2E62F2); animation: tut-pulso 1.6s ease-out infinite; }
+.tut-subir { animation: tut-subir 380ms cubic-bezier(.2,.9,.25,1.15) both; }
+.tut-pop { animation: tut-pop 520ms cubic-bezier(.2,.9,.3,1.4) both; animation-delay: 120ms; }
+.tut-dedo { animation: tut-dedo 1.3s ease-in-out infinite; filter: drop-shadow(0 6px 10px rgba(0,0,0,.35)); }
+.tut-dibujar { stroke-dasharray: 40; stroke-dashoffset: 40; animation: tut-dibujar 900ms ease-out 200ms forwards; }
+@keyframes tut-aparecer { from { opacity: 0; } to { opacity: 1; } }
+@keyframes tut-subir { from { opacity: 0; transform: translateY(28px) scale(.98); } to { opacity: 1; transform: none; } }
+@keyframes tut-pop { 0% { transform: scale(.4) rotate(-8deg); opacity: 0; } 100% { transform: none; opacity: 1; } }
+@keyframes tut-pulso { 0% { box-shadow: 0 0 0 3px var(--tut-color, #2E62F2); } 70% { box-shadow: 0 0 0 14px transparent; } 100% { box-shadow: 0 0 0 3px var(--tut-color, #2E62F2); } }
+@keyframes tut-dedo { 0%, 100% { transform: translate(14px, 18px) scale(1); } 45% { transform: translate(0, 0) scale(.92); } 55% { transform: translate(0, 0) scale(.92); } }
+@keyframes tut-dibujar { to { stroke-dashoffset: 0; } }
+@media (prefers-reduced-motion: reduce) {
+  .tut-aparecer, .tut-subir, .tut-pop, .tut-dedo, .tut-anillo { animation: none; }
+  .tut-dibujar { animation: none; stroke-dashoffset: 0; }
+  .tut-foco { transition: none; }
+}

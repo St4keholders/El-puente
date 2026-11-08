@@ -26,6 +26,7 @@ import {
 } from "./actions";
 import type { Database } from "@/lib/database.types";
 import { SelectorIndicativo } from "@/components/ui/SelectorIndicativo";
+import { InsigniaEmpresa } from "@/components/ui/InsigniaEmpresa";
 
 type Profile = Database["public"]["Tables"]["profiles"]["Row"];
 
@@ -36,6 +37,8 @@ interface MisDatosClientProps {
   userEmail: string;
   initialProfile: Profile | null;
   initialPhone: string | null;
+  anioNacimiento?: number | null;
+  nitEmpresa?: string | null;
   initialVerification?: {
     status: "pendiente" | "aprobada" | "rechazada" | "en_revision" | "vencida";
     verified_at: string | null;
@@ -54,6 +57,8 @@ export function MisDatosClient({
   userEmail,
   initialProfile,
   initialPhone,
+  anioNacimiento = null,
+  nitEmpresa = null,
   initialVerification,
 }: MisDatosClientProps) {
   let parsedCountry = "CO";
@@ -400,7 +405,9 @@ export function MisDatosClient({
                   <span className="truncate">{fullName}</span>
                 </div>
                 <p className="mt-1.5 text-[11px] text-[var(--ink-3)]">
-                  Así te ven en Puente: tus nombres y la inicial de tu apellido.
+                  {initialProfile?.account_type === "empresa"
+                    ? "Así te ven en Puente: la empresa y tu nombre con tu primer apellido."
+                    : "Así te ven en Puente: tus nombres y la inicial de tu apellido."}
                 </p>
               </div>
 
@@ -471,13 +478,38 @@ export function MisDatosClient({
                 required
                 minLength={2}
                 maxLength={80}
-                disabled={saving}
+                disabled={saving || initialProfile?.account_type === "empresa"}
                 autoComplete="name"
                 className="w-full rounded-xl border border-[var(--line)] bg-[var(--field)] py-2.5 px-3.5 text-sm text-[var(--ink)] placeholder-[var(--ink-3)] focus:border-[var(--accent)] focus:outline-none focus:ring-1 focus:ring-[var(--accent)] transition-all"
               />
               <p className="mt-1.5 text-[11px] text-[var(--ink-3)]">
-                Al verificar tu identidad, tu nombre se tomará de tu documento y quedará fijo.
+                {initialProfile?.account_type === "empresa"
+                  ? "En cuentas de empresa el nombre se arma con la empresa y tus datos del registro."
+                  : "Al verificar tu identidad, tu nombre se tomará de tu documento y quedará fijo."}
               </p>
+            </div>
+          )}
+
+          {/* Tipo de cuenta y año de nacimiento (se definen en el registro) */}
+          {(initialProfile?.account_type === "empresa" || anioNacimiento) && (
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              {initialProfile?.account_type === "empresa" && (
+                <div className="rounded-2xl border border-[var(--line)] bg-[var(--field)] p-3.5 min-w-0">
+                  <p className="text-[11px] uppercase tracking-wider font-semibold text-[var(--ink-3)]">Empresa</p>
+                  <p className="mt-0.5 text-sm font-semibold text-[var(--ink)] truncate">{initialProfile.company_name}</p>
+                  <p className="mt-1 flex flex-wrap items-center gap-1.5 text-[11px] text-[var(--ink-3)]">
+                    <InsigniaEmpresa verificada={initialProfile.company_verified} />
+                    {nitEmpresa && <span className="font-mono">NIT {nitEmpresa}</span>}
+                  </p>
+                </div>
+              )}
+              {anioNacimiento && (
+                <div className="rounded-2xl border border-[var(--line)] bg-[var(--field)] p-3.5">
+                  <p className="text-[11px] uppercase tracking-wider font-semibold text-[var(--ink-3)]">Año de nacimiento</p>
+                  <p className="mt-0.5 text-sm font-semibold text-[var(--ink)]">{anioNacimiento}</p>
+                  <p className="mt-1 text-[11px] text-[var(--ink-3)]">Privado. Solo lo ves tú.</p>
+                </div>
+              )}
             </div>
           )}
 

@@ -26,6 +26,8 @@ export interface ParsedVerificationEvent {
   /** Nombres y apellidos por separado, tal como los lee Didit del documento. */
   givenNames?: string;
   lastNames?: string;
+  /** Fecha de nacimiento del documento (AAAA-MM-DD) */
+  birthDate?: string;
   documentCountry?: string;
   documentNumber?: string;
   declineReason?: string;

@@ -13,6 +13,7 @@ import {
   IconoBrujula,
   IconoSalir,
   IconoHamburguesa,
+  IconoEstrellas,
   IconoX,
 } from "@/components/iconos";
 
@@ -187,6 +188,7 @@ export function Header() {
                     { href: "/explorar", label: "Explorar causas", icono: <IconoBrujula size={18} /> },
                     { href: "/finalizadas", label: "Finalizadas", icono: <IconoCheckCirculo size={18} /> },
                     { href: "/como-funciona", label: "Cómo funciona", icono: <IconoAyuda size={18} /> },
+                    { href: "/tutorial", label: "Tutorial de 1 minuto", icono: <IconoEstrellas size={18} /> },
                   ].map((l) => {
                     const activo = pathname === l.href;
                     return (

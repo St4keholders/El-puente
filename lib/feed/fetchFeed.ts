@@ -119,7 +119,9 @@ export async function fetchFeedPage(
         full_name,
         public_id,
         avatar_url,
-        identity_verified
+        identity_verified,
+        account_type,
+        company_verified
       ),
       media:cause_media(
         id,
@@ -178,7 +180,9 @@ export async function fetchFeedPage(
           full_name,
           public_id,
           avatar_url,
-          identity_verified
+          identity_verified,
+          account_type,
+          company_verified
         ),
         media:cause_media(
           id,
@@ -392,6 +396,8 @@ export async function fetchFeedPage(
         public_id: author.public_id || "",
         avatar_url: author.avatar_url,
         identity_verified: Boolean(author.identity_verified),
+        es_empresa: author.account_type === "empresa",
+        empresa_verificada: Boolean(author.company_verified),
       },
       media: causeMediaItems,
       resultsMedia: resultsMediaItems,

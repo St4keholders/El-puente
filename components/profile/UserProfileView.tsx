@@ -25,6 +25,7 @@ import { toggleFollowAction } from "@/app/actions/social";
 import { urlDeAvatar } from "@/lib/media";
 import { avisar } from "@/components/ui/Avisos";
 import { avisarNavegacion } from "@/components/layout/BarraNavegacion";
+import { InsigniaEmpresa } from "@/components/ui/InsigniaEmpresa";
 
 
 interface UserProfileViewProps {
@@ -37,6 +38,8 @@ interface UserProfileViewProps {
     city?: string | null;
     country_code?: string | null;
     identity_verified?: boolean;
+    account_type?: string | null;
+    company_verified?: boolean | null;
     causes_count: number;
     followers_count: number;
     following_count: number;
@@ -161,6 +164,7 @@ export function UserProfileView({
                     <span>Identidad verificada</span>
                   </span>
                 )}
+                {profile.account_type === "empresa" && <InsigniaEmpresa verificada={profile.company_verified} />}
               </div>
               <p className="text-xs text-text-secondary font-mono">{profile.public_id}</p>
               {locationText && (

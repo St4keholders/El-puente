@@ -79,9 +79,13 @@ export async function GET(request: Request, ctx: { params: Promise<{ id: string 
     .filter((m) => m.phase === "causa" && m.kind === "imagen")
     .sort((a, b) => a.position - b.position)[0];
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || "";
+  // La causa de ejemplo usa fotos de la propia app (/ejemplo/…)
+  const urlFoto = portada?.storage_path.startsWith("/ejemplo/")
+    ? `${origenDe(request)}${portada.storage_path}`
+    : `${supabaseUrl}/storage/v1/object/public/causas-imagenes/${portada?.storage_path}`;
   const foto = portada
     ? await fotoComoJpeg(
-        `${supabaseUrl}/storage/v1/object/public/causas-imagenes/${portada.storage_path}`,
+        urlFoto,
         F.w,
         F.foto
       )

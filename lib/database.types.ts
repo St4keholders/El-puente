@@ -568,6 +568,7 @@ export type Database = {
       }
       identity_verifications: {
         Row: {
+          verified_birth_date: string | null
           created_at: string
           decline_reason: string | null
           document_country: string | null
@@ -587,6 +588,7 @@ export type Database = {
           verified_last_names: string | null
         }
         Insert: {
+          verified_birth_date?: string | null
           created_at?: string
           decline_reason?: string | null
           document_country?: string | null
@@ -606,6 +608,7 @@ export type Database = {
           verified_last_names?: string | null
         }
         Update: {
+          verified_birth_date?: string | null
           created_at?: string
           decline_reason?: string | null
           document_country?: string | null
@@ -683,6 +686,10 @@ export type Database = {
       }
       profile_private: {
         Row: {
+          birth_year: number | null
+          company_nit: string | null
+          given_names: string | null
+          last_names: string | null
           created_at: string
           id: string
           phone: string | null
@@ -692,6 +699,10 @@ export type Database = {
           updated_at: string
         }
         Insert: {
+          birth_year?: number | null
+          company_nit?: string | null
+          given_names?: string | null
+          last_names?: string | null
           created_at?: string
           id: string
           phone?: string | null
@@ -701,6 +712,10 @@ export type Database = {
           updated_at?: string
         }
         Update: {
+          birth_year?: number | null
+          company_nit?: string | null
+          given_names?: string | null
+          last_names?: string | null
           created_at?: string
           id?: string
           phone?: string | null
@@ -721,6 +736,9 @@ export type Database = {
       }
       profiles: {
         Row: {
+          account_type: string
+          company_name: string | null
+          company_verified: boolean
           avatar_url: string | null
           bio: string | null
           causes_count: number
@@ -739,6 +757,9 @@ export type Database = {
           updated_at: string
         }
         Insert: {
+          account_type?: string
+          company_name?: string | null
+          company_verified?: boolean
           avatar_url?: string | null
           bio?: string | null
           causes_count?: number
@@ -757,6 +778,9 @@ export type Database = {
           updated_at?: string
         }
         Update: {
+          account_type?: string
+          company_name?: string | null
+          company_verified?: boolean
           avatar_url?: string | null
           bio?: string | null
           causes_count?: number
@@ -989,10 +1013,25 @@ export type Database = {
           thanks_message: string
         }[]
       }
-      complete_onboarding: {
-        Args: { p_full_name: string; p_phone: string; p_terms_version: string }
-        Returns: undefined
-      }
+      complete_onboarding:
+        | {
+            Args: { p_full_name: string; p_phone: string; p_terms_version: string }
+            Returns: undefined
+          }
+        | {
+            Args: {
+              p_account_type?: string
+              p_birth_year: number
+              p_company_name?: string
+              p_company_nit?: string
+              p_full_name: string
+              p_given_names: string
+              p_last_names: string
+              p_phone: string
+              p_terms_version: string
+            }
+            Returns: undefined
+          }
       confirm_support: {
         Args: { p_amount?: number; p_cause_id: string; p_supplies?: Json }
         Returns: undefined

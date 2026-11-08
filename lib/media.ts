@@ -2,6 +2,10 @@ const SUPABASE_URL = (
   process.env.NEXT_PUBLIC_SUPABASE_URL || "https://aeqqnzqcxurnpbkkahvl.supabase.co"
 ).replace(/\/$/, "");
 
+/** Archivos propios de la app (no del almacenamiento): /ejemplo/… y /marca/… */
+const RUTA_EJEMPLO = /^\/ejemplo\/[a-z0-9-]+\.(webp|jpg|png)$/;
+const RUTA_MARCA = /^\/marca\/[a-z0-9-]+\.(webp|png|svg)$/;
+
 /** Bucket donde viven las fotos de perfil: `{uid}/avatar-{timestamp}.webp`. */
 export const BUCKET_AVATARES = "avatares";
 
@@ -12,14 +16,19 @@ export const BUCKET_AVATARES = "avatares";
  */
 export function urlDeMedio(bucket: string, storagePath: string | null | undefined): string {
   if (!storagePath) return "";
+  // Solo URLs de nuestro propio almacenamiento (nada de imágenes externas puestas a mano)
   if (storagePath.startsWith("http://") || storagePath.startsWith("https://")) {
-    return storagePath;
+    return storagePath.startsWith(`${SUPABASE_URL}/storage/v1/object/public/`) ? storagePath : "";
   }
   if (storagePath.startsWith("blob:") || storagePath.startsWith("data:")) {
     return storagePath;
   }
-  // Rutas de ejemplo locales/placeholders
-  if (storagePath.startsWith("ejemplo/")) {
+  // Fotos de la causa de ejemplo del tutorial: viven en /public/ejemplo de la app
+  if (RUTA_EJEMPLO.test(storagePath)) {
+    return storagePath;
+  }
+  // Rutas de ejemplo viejas/placeholders
+  if (storagePath.startsWith("ejemplo/") || storagePath.startsWith("/")) {
     return "";
   }
 
@@ -47,6 +56,8 @@ export function urlDeAvatar(valor: string | null | undefined): string | null {
       return null;
     }
   }
+  // Logo de cuentas oficiales (la base no deja que nadie más ponga rutas internas)
+  if (valor.startsWith("/")) return RUTA_MARCA.test(valor) ? valor : null;
   return urlDeMedio(BUCKET_AVATARES, valor) || null;
 }
 

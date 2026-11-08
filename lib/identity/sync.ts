@@ -2,7 +2,7 @@ import "server-only";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { diditProvider, hashDocumentNumber } from "@/lib/identity/didit";
 import type { ParsedVerificationEvent } from "@/lib/identity/provider";
-import { nombrePublico, repartirNombre, ultimosCuatro } from "@/lib/identity/nombre";
+import { nombreDeCuenta, repartirNombre, ultimosCuatro } from "@/lib/identity/nombre";
 import { paisIso2 } from "@/lib/geo/paises-iso";
 
 /** Estados de Didit que ya son una decisión y vale la pena guardar. */
@@ -114,6 +114,8 @@ async function guardarDatosIdentidad(
       verified_given_names: decision.givenNames?.trim() || repartido.nombres || null,
       verified_last_names: decision.lastNames?.trim() || repartido.apellidos || null,
       document_country: paisIso2(decision.documentCountry),
+      verified_birth_date: decision.birthDate || null,
+      updated_at: new Date().toISOString(),
     })
     .eq("provider_session_id", sessionId)
     .eq("user_id", userId);
@@ -121,10 +123,17 @@ async function guardarDatosIdentidad(
     console.error("[guardarDatosIdentidad] verificación:", verifErr.code, verifErr.message);
   }
 
-  const publico = nombrePublico({
+  // Persona: "Juan Andrés V." · Empresa: "El Puente · Juan Andrés Vásquez"
+  const { data: cuenta } = await admin
+    .from("profiles")
+    .select("account_type, company_name")
+    .eq("id", userId)
+    .maybeSingle();
+  const publico = nombreDeCuenta({
     nombres: decision.givenNames,
     apellidos: decision.lastNames,
     nombreCompleto: decision.verifiedFullName,
+    empresa: cuenta?.account_type === "empresa" ? cuenta.company_name : null,
   });
   if (publico) {
     const { error: perfilErr } = await admin.from("profiles").update({ full_name: publico }).eq("id", userId);
@@ -143,7 +152,7 @@ export async function completarDatosIdentidad(userId: string): Promise<void> {
     const admin = createAdminClient();
     const { data: verif, error } = await admin
       .from("identity_verifications")
-      .select("provider_session_id, document_last4, verified_given_names, document_country")
+      .select("provider_session_id, document_last4, verified_given_names, verified_birth_date, updated_at")
       .eq("user_id", userId)
       .eq("status", "aprobada")
       .order("verified_at", { ascending: false, nullsFirst: false })
@@ -154,8 +163,11 @@ export async function completarDatosIdentidad(userId: string): Promise<void> {
       return;
     }
     if (!verif?.provider_session_id) return;
-    // Ya se completó antes (aunque Didit no hubiera devuelto todos los datos): no se repite.
-    if (verif.document_last4 || verif.verified_given_names) return;
+    // Ya se completó antes. Si solo falta la fecha de nacimiento, se reintenta como mucho una vez al día.
+    const completa = Boolean(verif.document_last4 || verif.verified_given_names);
+    const reintentoFecha =
+      !verif.verified_birth_date && Date.now() - new Date(verif.updated_at).getTime() > 24 * 3600 * 1000;
+    if (completa && !reintentoFecha) return;
 
     const decision = await diditProvider.obtenerDecision(verif.provider_session_id);
     if (decision.userId && decision.userId !== userId) return;

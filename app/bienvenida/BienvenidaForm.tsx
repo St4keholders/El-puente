@@ -3,7 +3,8 @@
 import React, { useState } from "react";
 import Link from "next/link";
 import { Glass } from "@/components/ui/Glass";
-import { IconoCargando, IconoAlerta, IconoCheck } from "@/components/iconos";
+import { IconoCargando, IconoAlerta, IconoCheck, IconoCandado, IconoInfo } from "@/components/iconos";
+import { nombreDeCuenta, repartirNombre } from "@/lib/identity/nombre";
 import { parsePhoneNumber, CountryCode } from "libphonenumber-js";
 import { getAllCountries } from "@/lib/geo/countries";
 import { paisTelefonoValido } from "@/lib/geo/telefonos";
@@ -32,7 +33,15 @@ export function BienvenidaForm({
   next,
   paisSugerido,
 }: BienvenidaFormProps) {
-  const [fullName, setFullName] = useState(initialName);
+  const inicial = repartirNombre(initialName);
+  const [nombres, setNombres] = useState(inicial.nombres);
+  const [apellidos, setApellidos] = useState(inicial.apellidos);
+  const [anioNacimiento, setAnioNacimiento] = useState("");
+  const [esEmpresa, setEsEmpresa] = useState(false);
+  const [empresa, setEmpresa] = useState("");
+  const [nit, setNit] = useState("");
+  const anioActual = new Date().getFullYear();
+  const anios = Array.from({ length: anioActual - 14 - 1919 }, (_, i) => anioActual - 14 - i);
   const [countryCode, setCountryCode] = useState(initialCountry);
   const [city, setCity] = useState(initialCity);
   const countries = getAllCountries();
@@ -46,9 +55,19 @@ export function BienvenidaForm({
     e.preventDefault();
     setErrorMsg(null);
 
-    const cleanName = fullName.trim().replace(/\s+/g, " ");
-    if (cleanName.length < 5 || cleanName.length > 80 || cleanName.split(" ").length < 2) {
-      setErrorMsg("Escribe tu nombre y apellidos (mínimo dos palabras, entre 5 y 80 caracteres).");
+    const n = nombres.trim().replace(/\s+/g, " ");
+    const a = apellidos.trim().replace(/\s+/g, " ");
+    if (n.length < 2 || a.length < 2) {
+      setErrorMsg("Escribe tus nombres y tus apellidos.");
+      return;
+    }
+    const anio = Number(anioNacimiento);
+    if (!anio) {
+      setErrorMsg("Elige tu año de nacimiento.");
+      return;
+    }
+    if (esEmpresa && empresa.trim().length < 2) {
+      setErrorMsg("Escribe el nombre de tu empresa.");
       return;
     }
 
@@ -79,11 +98,16 @@ export function BienvenidaForm({
 
     try {
       const res = await completeOnboardingAction({
-        fullName: cleanName,
+        givenNames: n,
+        lastNames: a,
+        birthYear: anio,
+        accountType: esEmpresa ? "empresa" : "persona",
+        companyName: esEmpresa ? empresa : null,
+        companyNit: esEmpresa ? nit : null,
         phoneNumber: formattedPhone,
         countryCode: countryCode || null,
         city: city.trim() || null,
-        termsVersion: "v1.0",
+        termsVersion: "v1.1",
         acceptTerms,
         next,
       });
@@ -105,7 +129,9 @@ export function BienvenidaForm({
     }
   };
 
-  const firstName = fullName.split(" ")[0] || "bienvenido";
+  const firstName = nombres.trim().split(" ")[0] || "bienvenido";
+  const nombreVisible =
+    nombreDeCuenta({ nombres, apellidos, empresa: esEmpresa ? empresa.trim() || "Tu empresa" : null }) || "";
   const telefonoValido = (() => {
     if (!phoneNumber.trim()) return false;
     try {
@@ -114,7 +140,7 @@ export function BienvenidaForm({
       return false;
     }
   })();
-  const initials = (fullName || userEmail || "U")
+  const initials = (`${nombres} ${apellidos}`.trim() || userEmail || "U")
     .split(/\s+/)
     .slice(0, 2)
     .map((w) => w[0]?.toUpperCase())
@@ -133,7 +159,7 @@ export function BienvenidaForm({
               {avatarUrl ? (
                 <img
                   src={avatarUrl}
-                  alt={fullName}
+                  alt=""
                   referrerPolicy="no-referrer"
                   className="h-full w-full object-cover"
                 />
@@ -161,36 +187,174 @@ export function BienvenidaForm({
         )}
 
         <form onSubmit={handleSubmit} className="space-y-4">
-          {/* Nombre completo */}
+          {/* Correo con el que entró (no se cambia) */}
           <div>
-            <label
-              htmlFor="fullName"
-              className="block text-xs font-semibold uppercase tracking-wider text-[var(--ink-2)] mb-1.5"
-            >
-              Nombre y apellidos *
+            <label htmlFor="correo" className="block text-xs font-semibold uppercase tracking-wider text-[var(--ink-2)] mb-1.5">
+              Correo
             </label>
-            <input
-              id="fullName"
-              type="text"
+            <div className="relative">
+              <input
+                id="correo"
+                type="email"
+                value={userEmail}
+                readOnly
+                aria-readonly="true"
+                className="w-full rounded-2xl border border-[var(--line)] bg-[var(--track)] pl-4 pr-10 py-2.5 text-sm text-[var(--ink-2)] cursor-not-allowed"
+              />
+              <IconoCandado size={15} className="pointer-events-none absolute right-3.5 top-1/2 -translate-y-1/2 text-[var(--ink-3)]" />
+            </div>
+            <p className="mt-1 text-[11px] text-[var(--ink-3)]">Es el de tu cuenta de Google. No se puede cambiar.</p>
+          </div>
+
+          {/* Nombres y apellidos */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <div>
+              <label htmlFor="nombres" className="block text-xs font-semibold uppercase tracking-wider text-[var(--ink-2)] mb-1.5">
+                Nombres *
+              </label>
+              <input
+                id="nombres"
+                type="text"
+                required
+                maxLength={60}
+                value={nombres}
+                onChange={(e) => setNombres(e.target.value)}
+                placeholder="Ej. Ana María"
+                autoComplete="given-name"
+                autoCapitalize="words"
+                disabled={submitting}
+                className="w-full rounded-2xl border border-[var(--line)] bg-[var(--field)] px-4 py-2.5 text-sm text-[var(--ink)] placeholder-[var(--ink-3)] focus:border-[var(--accent)] focus:outline-none focus:ring-1 focus:ring-[var(--accent)] transition-all"
+              />
+            </div>
+            <div>
+              <label htmlFor="apellidos" className="block text-xs font-semibold uppercase tracking-wider text-[var(--ink-2)] mb-1.5">
+                Apellidos *
+              </label>
+              <input
+                id="apellidos"
+                type="text"
+                required
+                maxLength={60}
+                value={apellidos}
+                onChange={(e) => setApellidos(e.target.value)}
+                placeholder="Ej. Pérez Gómez"
+                autoComplete="family-name"
+                autoCapitalize="words"
+                disabled={submitting}
+                className="w-full rounded-2xl border border-[var(--line)] bg-[var(--field)] px-4 py-2.5 text-sm text-[var(--ink)] placeholder-[var(--ink-3)] focus:border-[var(--accent)] focus:outline-none focus:ring-1 focus:ring-[var(--accent)] transition-all"
+              />
+            </div>
+          </div>
+          <p className="-mt-2 text-[11px] text-[var(--ink-3)]">
+            Escríbelos como aparecen en tu documento. Al verificar tu identidad los tomamos de ahí.
+          </p>
+
+          {/* Año de nacimiento */}
+          <div>
+            <div className="flex items-center justify-between mb-1.5">
+              <label htmlFor="anio" className="block text-xs font-semibold uppercase tracking-wider text-[var(--ink-2)]">
+                Año de nacimiento *
+              </label>
+              <span className="text-[10px] font-mono px-2 py-0.5 rounded-full bg-[var(--hover)] text-[var(--ink-3)]">Privado</span>
+            </div>
+            <select
+              id="anio"
               required
-              minLength={5}
-              maxLength={80}
-              value={fullName}
-              onChange={(e) => setFullName(e.target.value)}
-              placeholder="Como aparece en tu documento"
-              autoComplete="name"
-              autoCapitalize="words"
+              value={anioNacimiento}
+              onChange={(e) => setAnioNacimiento(e.target.value)}
               disabled={submitting}
-              className="w-full rounded-2xl border border-[var(--line)] bg-[var(--field)] px-4 py-2.5 text-sm text-[var(--ink)] placeholder-[var(--ink-3)] focus:border-[var(--accent)] focus:outline-none focus:ring-1 focus:ring-[var(--accent)] transition-all"
-            />
+              className="w-full rounded-2xl border border-[var(--line)] bg-[var(--field)] px-3 py-2.5 text-sm text-[var(--ink)] focus:border-[var(--accent)] focus:outline-none transition-all"
+            >
+              <option value="">Elige el año</option>
+              {anios.map((y) => (
+                <option key={y} value={y}>
+                  {y}
+                </option>
+              ))}
+            </select>
             <p className="mt-1 text-[11px] text-[var(--ink-3)]">
-              Cuando verifiques tu identidad lo tomaremos de tu documento y en público se verá tu
-              nombre con la inicial de tu apellido.
-            </p>
-            <p className="mt-1 text-[11px] text-[var(--ink-3)]">
-              Tu ID será <strong className="font-mono text-[var(--ink)]">{publicId || "PNT-XXXXXX"}</strong>. Sirve para que te identifiquen y no se puede cambiar.
+              Desde los 14 años puedes registrarte, comentar y apoyar. Para publicar causas necesitas 18.
             </p>
           </div>
+
+          {/* ¿Empresa? */}
+          <div className="rounded-2xl border border-[var(--line)] bg-[var(--field)] p-3.5">
+            <label className="flex items-center justify-between gap-3 cursor-pointer">
+              <span>
+                <span className="block text-sm font-semibold text-[var(--ink)]">¿Quieres registrarte como empresa?</span>
+                <span className="block text-[11px] text-[var(--ink-3)]">Fundaciones, negocios u organizaciones.</span>
+              </span>
+              <span className="relative inline-flex flex-shrink-0">
+                <input
+                  type="checkbox"
+                  role="switch"
+                  checked={esEmpresa}
+                  onChange={(e) => setEsEmpresa(e.target.checked)}
+                  disabled={submitting}
+                  className="peer sr-only"
+                />
+                <span className="h-7 w-12 rounded-full bg-[var(--track)] border border-[var(--line)] transition-colors peer-checked:bg-[var(--accent)] peer-focus-visible:ring-2 peer-focus-visible:ring-[var(--accent)]" />
+                <span className="absolute left-1 top-1 h-5 w-5 rounded-full bg-white shadow transition-transform peer-checked:translate-x-5" />
+              </span>
+            </label>
+
+            {esEmpresa && (
+              <div className="mt-3.5 space-y-3 animate-fade-in">
+                <div>
+                  <label htmlFor="empresa" className="block text-xs font-semibold uppercase tracking-wider text-[var(--ink-2)] mb-1.5">
+                    Nombre comercial *
+                  </label>
+                  <input
+                    id="empresa"
+                    type="text"
+                    maxLength={80}
+                    value={empresa}
+                    onChange={(e) => setEmpresa(e.target.value)}
+                    placeholder="Ej. Fundación Manos Unidas"
+                    autoComplete="organization"
+                    disabled={submitting}
+                    className="w-full rounded-2xl border border-[var(--line)] bg-[var(--field)] px-4 py-2.5 text-sm text-[var(--ink)] placeholder-[var(--ink-3)] focus:border-[var(--accent)] focus:outline-none focus:ring-1 focus:ring-[var(--accent)] transition-all"
+                  />
+                </div>
+                <div>
+                  <label htmlFor="nit" className="block text-xs font-semibold uppercase tracking-wider text-[var(--ink-2)] mb-1.5">
+                    NIT (opcional)
+                  </label>
+                  <input
+                    id="nit"
+                    type="text"
+                    inputMode="numeric"
+                    maxLength={16}
+                    value={nit}
+                    onChange={(e) => setNit(e.target.value)}
+                    placeholder="Ej. 900123456-1"
+                    disabled={submitting}
+                    className="w-full rounded-2xl border border-[var(--line)] bg-[var(--field)] px-4 py-2.5 text-sm text-[var(--ink)] placeholder-[var(--ink-3)] focus:border-[var(--accent)] focus:outline-none focus:ring-1 focus:ring-[var(--accent)] transition-all"
+                  />
+                </div>
+                <div className="flex items-start gap-2 rounded-xl bg-[var(--accent)]/10 p-3 text-[11px] leading-relaxed text-[var(--ink-2)]">
+                  <IconoInfo size={14} className="mt-0.5 flex-shrink-0 text-[var(--accent)]" />
+                  <p>
+                    Por seguridad, los datos que verificamos son los <strong>tuyos como representante</strong> de la
+                    empresa. En Puente siempre se verá el nombre de la empresa seguido de tu nombre y primer apellido,
+                    para que quien dona sepa qué persona responde. La empresa aparecerá como{" "}
+                    <strong>«sin verificar»</strong> hasta que confirmemos que está constituida.
+                  </p>
+                </div>
+              </div>
+            )}
+          </div>
+
+          {/* Así te verán */}
+          {nombreVisible && (
+            <div className="rounded-2xl border border-dashed border-[var(--line)] px-4 py-3">
+              <p className="text-[11px] uppercase tracking-wider font-semibold text-[var(--ink-3)]">Así te verán en Puente</p>
+              <p className="mt-0.5 text-sm font-semibold text-[var(--ink)] break-words">{nombreVisible}</p>
+              <p className="mt-1 text-[11px] text-[var(--ink-3)]">
+                Tu ID será <strong className="font-mono text-[var(--ink)]">{publicId || "PNT-XXXXXX"}</strong>. No se puede cambiar.
+              </p>
+            </div>
+          )}
 
           {/* País y ciudad (opcionales) */}
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">

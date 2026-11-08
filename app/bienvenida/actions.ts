@@ -3,9 +3,15 @@
 import { createClient } from "@/lib/supabase/server";
 import { copyGoogleAvatarToStorage } from "@/lib/actions/auth";
 import { destinoSeguro } from "@/lib/utils/destino";
+import { nombreDeCuenta } from "@/lib/identity/nombre";
 
 export interface OnboardingInput {
-  fullName: string;
+  givenNames: string;
+  lastNames: string;
+  birthYear: number;
+  accountType: "persona" | "empresa";
+  companyName?: string | null;
+  companyNit?: string | null;
   phoneNumber?: string | null;
   countryCode?: string | null;
   city?: string | null;
@@ -14,31 +20,46 @@ export interface OnboardingInput {
   next?: string;
 }
 
-/** Nombre y apellidos: mínimo dos palabras, entre 5 y 80 caracteres (igual que REG_NOMBRE). */
-function nombreValido(nombre: string) {
-  const limpio = nombre.trim().replace(/\s+/g, " ");
-  return limpio.length >= 5 && limpio.length <= 80 && limpio.split(" ").length >= 2;
-}
+const limpiar = (t: string | null | undefined) => (t || "").trim().replace(/\s+/g, " ");
+
+const ERRORES_REGISTRO: Record<string, string> = {
+  REG_NOMBRE: "Escribe tus nombres y tus apellidos (cada uno con al menos 2 letras).",
+  REG_EDAD: "Para registrarte en Puente necesitas tener al menos 14 años.",
+  REG_TELEFONO: "Revisa el número, parece incompleto.",
+  REG_TERMINOS: "Acepta los términos para continuar.",
+  REG_EMPRESA: "Escribe el nombre de la empresa (entre 2 y 80 caracteres).",
+  REG_EMPRESA_RESERVADA: "Ese nombre de empresa no está disponible. Escribe el nombre comercial de tu empresa.",
+  REG_NIT: "Revisa el NIT: solo números, con o sin dígito de verificación (ej. 900123456-1).",
+};
 
 export async function completeOnboardingAction(data: OnboardingInput) {
   if (!data.acceptTerms) {
-    return { success: false, error: "Acepta los términos para continuar." };
+    return { success: false, error: ERRORES_REGISTRO.REG_TERMINOS };
   }
 
-  const name = (data.fullName || "").trim().replace(/\s+/g, " ");
-  if (!nombreValido(name)) {
-    return {
-      success: false,
-      error: "Escribe tu nombre y apellidos (mínimo dos palabras, entre 5 y 80 caracteres).",
-    };
+  const nombres = limpiar(data.givenNames);
+  const apellidos = limpiar(data.lastNames);
+  if (nombres.length < 2 || nombres.length > 60 || apellidos.length < 2 || apellidos.length > 60) {
+    return { success: false, error: ERRORES_REGISTRO.REG_NOMBRE };
+  }
+
+  const anioActual = new Date().getFullYear();
+  if (!Number.isInteger(data.birthYear) || data.birthYear < 1900 || anioActual - data.birthYear < 14) {
+    return { success: false, error: ERRORES_REGISTRO.REG_EDAD };
+  }
+
+  const empresa = data.accountType === "empresa" ? limpiar(data.companyName) : "";
+  if (data.accountType === "empresa" && (empresa.length < 2 || empresa.length > 80)) {
+    return { success: false, error: ERRORES_REGISTRO.REG_EMPRESA };
+  }
+  const nit = data.accountType === "empresa" ? (data.companyNit || "").replace(/[\s.]/g, "") : "";
+  if (nit && !/^[0-9]{6,12}(-[0-9])?$/.test(nit)) {
+    return { success: false, error: ERRORES_REGISTRO.REG_NIT };
   }
 
   const phone = (data.phoneNumber || "").trim();
   if (!phone) {
-    return {
-      success: false,
-      error: "Ingresa tu número de teléfono de contacto.",
-    };
+    return { success: false, error: "Ingresa tu número de teléfono de contacto." };
   }
 
   const supabase = await createClient();
@@ -55,37 +76,32 @@ export async function completeOnboardingAction(data: OnboardingInput) {
     };
   }
 
-  // Con la identidad verificada el nombre ya es el del documento y no se cambia.
-  const { data: actual } = await supabase
-    .from("profiles")
-    .select("identity_verified, full_name")
-    .eq("id", user.id)
-    .maybeSingle();
-  const nombreFinal = actual?.identity_verified && actual.full_name ? actual.full_name : name;
+  // Persona: "Ana P." · Empresa: "Tienda Ana · Ana Pérez". Al verificar la identidad
+  // se vuelve a calcular con los datos del documento (y la base no deja cambiarlo después).
+  const nombreVisible = nombreDeCuenta({
+    nombres,
+    apellidos,
+    empresa: data.accountType === "empresa" ? empresa : null,
+  }) || `${nombres} ${apellidos}`;
 
   const { error: rpcErr } = await supabase.rpc("complete_onboarding", {
-    p_full_name: nombreFinal,
+    p_given_names: nombres,
+    p_last_names: apellidos,
+    p_full_name: nombreVisible,
     p_phone: phone,
-    p_terms_version: data.termsVersion || "v1.0",
+    p_terms_version: data.termsVersion || "v1.1",
+    p_birth_year: data.birthYear,
+    p_account_type: data.accountType,
+    p_company_name: data.accountType === "empresa" ? empresa : undefined,
+    p_company_nit: nit || undefined,
   });
 
   if (rpcErr) {
     console.error("complete_onboarding:", rpcErr.code, rpcErr.message);
-    if (rpcErr.message?.includes("REG_NOMBRE")) {
-      return {
-        success: false,
-        error: "Escribe tu nombre y apellidos (mínimo dos palabras, entre 5 y 80 caracteres).",
-      };
-    }
-    if (rpcErr.message?.includes("REG_TELEFONO")) {
-      return { success: false, error: "Revisa el número, parece incompleto." };
-    }
-    if (rpcErr.message?.includes("REG_TERMINOS")) {
-      return { success: false, error: "Acepta los términos para continuar." };
-    }
+    const codigo = rpcErr.message?.match(/REG_[A-Z_]+/)?.[0];
     return {
       success: false,
-      error: "No pudimos completar el registro. Inténtalo de nuevo en un momento.",
+      error: (codigo && ERRORES_REGISTRO[codigo]) || "No pudimos completar el registro. Inténtalo de nuevo en un momento.",
     };
   }
 
@@ -126,5 +142,6 @@ export async function completeOnboardingAction(data: OnboardingInput) {
 
   const destino = destinoSeguro(data.next, "/");
   const targetUrl = destino.startsWith("/bienvenida") ? "/" : destino;
-  return { success: true, redirect: targetUrl };
+  // Primero el tutorial corto; al terminar (o saltarlo) sigue a donde iba
+  return { success: true, redirect: `/tutorial?next=${encodeURIComponent(targetUrl)}` };
 }
